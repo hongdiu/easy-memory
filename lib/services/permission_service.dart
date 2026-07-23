@@ -52,7 +52,7 @@ class PermissionService {
   static Future<bool> _isAndroid13OrAbove() async {
     try {
       final sdk = await _getAndroidSdkInt();
-      return sdk >= 33;
+      return sdk >= 13;
     } catch (_) {
       return false;
     }
@@ -61,7 +61,7 @@ class PermissionService {
   static Future<bool> _isAndroid11OrAbove() async {
     try {
       final sdk = await _getAndroidSdkInt();
-      return sdk >= 30;
+      return sdk >= 11;
     } catch (_) {
       return false;
     }
