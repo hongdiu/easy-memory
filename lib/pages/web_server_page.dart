@@ -31,7 +31,9 @@ class _WebServerPageState extends State<WebServerPage> {
 
   Future<void> _findLocalIp() async {
     try {
-      final interfaces = await NetworkInterface.list();
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      ).timeout(const Duration(seconds: 5));
       for (final iface in interfaces) {
         for (final addr in iface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {

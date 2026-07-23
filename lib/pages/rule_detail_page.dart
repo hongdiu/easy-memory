@@ -36,21 +36,34 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
-    final items = await _matchItemRepo.getByRuleId(widget.rule.id!);
-    // ponytail: sort alphabetically for consistent display
-    items.sort((a, b) => a.matchValue.compareTo(b.matchValue));
+    try {
+      final items = await _matchItemRepo.getByRuleId(widget.rule.id!);
+      // ponytail: sort alphabetically for consistent display
+      items.sort((a, b) => a.matchValue.compareTo(b.matchValue));
 
-    final records = <int, List<FileRecord>>{};
-    for (final item in items) {
-      records[item.id!] = await _fileRecordRepo.getByMatchItemId(item.id!);
-    }
+      final records = <int, List<FileRecord>>{};
+      for (final item in items) {
+        records[item.id!] = await _fileRecordRepo.getByMatchItemId(item.id!);
+      }
 
-    if (mounted) {
-      setState(() {
-        _matchItems = items;
-        _fileRecords = records;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _matchItems = items;
+          _fileRecords = records;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _matchItems = [];
+          _fileRecords = {};
+          _loading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载数据失败: $e')),
+        );
+      }
     }
   }
 

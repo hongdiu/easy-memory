@@ -25,11 +25,23 @@ class _RulesListPageState extends State<RulesListPage> {
 
   Future<void> _loadRules() async {
     setState(() => _loading = true);
-    final rules = await _repository.getAll();
-    setState(() {
-      _rules = rules;
-      _loading = false;
-    });
+    try {
+      final rules = await _repository.getAll();
+      if (!mounted) return;
+      setState(() {
+        _rules = rules;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _rules = [];
+        _loading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('加载失败: $e')),
+      );
+    }
   }
 
   Future<void> _deleteRule(Rule rule) async {
