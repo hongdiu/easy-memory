@@ -45,6 +45,7 @@ dependencies:
   intl: ^0.19.0
   permission_handler: ^11.3.1
   sqlite3_flutter_libs: ^0.5.0
+  saf: ^2.1.0
 
 dev_dependencies:
   flutter_test:

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:easy_memory/models/rule.dart';
 import 'package:easy_memory/data/rule_repository.dart';
@@ -91,6 +94,9 @@ class _HomePageState extends State<_HomePage> {
   }
 
   Future<void> _checkAndRequestPermission() async {
+    // Android 使用 SAF，无需 MANAGE_EXTERNAL_STORAGE 权限
+    if (!kIsWeb && Platform.isAndroid) return;
+
     final hasPermission = await PermissionService.hasStoragePermission();
     if (!hasPermission && mounted) {
       final granted = await PermissionService.requestStorage();

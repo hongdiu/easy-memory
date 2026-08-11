@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -6,6 +9,8 @@ import 'package:easy_memory/models/match_item.dart';
 import 'package:easy_memory/models/file_record.dart';
 import 'package:easy_memory/data/match_item_repository.dart';
 import 'package:easy_memory/data/file_record_repository.dart';
+import 'package:easy_memory/services/file_scanner.dart';
+import 'package:easy_memory/services/saf_file_scanner.dart';
 import 'package:easy_memory/services/scan_result_handler.dart';
 import 'package:easy_memory/services/permission_service.dart';
 
@@ -21,7 +26,8 @@ class RuleDetailPage extends StatefulWidget {
 class _RuleDetailPageState extends State<RuleDetailPage> {
   final MatchItemRepository _matchItemRepo = MatchItemRepository();
   final FileRecordRepository _fileRecordRepo = FileRecordRepository();
-  final ScanResultHandler _scanHandler = ScanResultHandler();
+  late final FileScanner _scanner;
+  late final ScanResultHandler _scanHandler;
 
   List<MatchItem> _matchItems = [];
   Map<int, List<FileRecord>> _fileRecords = {};
@@ -31,6 +37,8 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
   @override
   void initState() {
     super.initState();
+    _scanner = createFileScanner();
+    _scanHandler = ScanResultHandler(scanner: _scanner);
     _loadData();
   }
 
@@ -67,6 +75,8 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
     }
   }
 
+  bool get _isAndroid => !kIsWeb && Platform.isAndroid;
+
   Future<void> _rescan() async {
     if (widget.rule.scanDirectory == null || widget.rule.scanDirectory!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -75,35 +85,37 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
       return;
     }
 
-    // 扫描前请求存储权限
-    final granted = await PermissionService.requestStorage();
-    if (!granted) {
-      if (mounted) {
-        final goSettings = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('需要存储权限'),
-            content: const Text(
-              '扫描文件需要「所有文件访问权限」。\n\n'
-              '请点击「去授权」，在设置中打开「允许访问所有文件」开关。',
+    // Android 使用 SAF，无需 MANAGE_EXTERNAL_STORAGE 权限
+    if (!_isAndroid) {
+      final granted = await PermissionService.requestStorage();
+      if (!granted) {
+        if (mounted) {
+          final goSettings = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('需要存储权限'),
+              content: const Text(
+                '扫描文件需要「所有文件访问权限」。\n\n'
+                '请点击「去授权」，在设置中打开「允许访问所有文件」开关。',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('去授权'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('去授权'),
-              ),
-            ],
-          ),
-        );
-        if (goSettings == true && mounted) {
-          await PermissionService.openSettingsAndCheck();
+          );
+          if (goSettings == true && mounted) {
+            await PermissionService.openSettingsAndCheck();
+          }
         }
+        return;
       }
-      return;
     }
 
     setState(() => _scanning = true);
@@ -132,45 +144,54 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
   }
 
   Future<void> _changeDirectory() async {
-    // 选择目录前请求存储权限
-    final granted = await PermissionService.requestStorage();
-    if (!granted) {
-      if (mounted) {
-        final goSettings = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('需要存储权限'),
-            content: const Text(
-              '更换目录并扫描文件需要「所有文件访问权限」。\n\n'
-              '请点击「去授权」，在设置中打开「允许访问所有文件」开关。',
+    final bool isAndroid = _isAndroid;
+
+    // Android: 使用 SAF 选择器（无需权限）
+    // 桌面: 使用 FilePicker，先请求权限
+    String? directory;
+    if (isAndroid) {
+      final safScanner = _scanner as SafFileScanner;
+      directory = await safScanner.pickDirectory();
+    } else {
+      final granted = await PermissionService.requestStorage();
+      if (!granted) {
+        if (mounted) {
+          final goSettings = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('需要存储权限'),
+              content: const Text(
+                '更换目录并扫描文件需要「所有文件访问权限」。\n\n'
+                '请点击「去授权」，在设置中打开「允许访问所有文件」开关。',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('去授权'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('去授权'),
-              ),
-            ],
-          ),
-        );
-        if (goSettings == true && mounted) {
-          await PermissionService.openSettingsAndCheck();
+          );
+          if (goSettings == true && mounted) {
+            await PermissionService.openSettingsAndCheck();
+          }
         }
+        return;
       }
-      return;
+      directory = await FilePicker.getDirectoryPath();
     }
 
-    final path = await FilePicker.getDirectoryPath();
-    if (path == null || !mounted) return;
+    if (directory == null || !mounted) return;
 
     setState(() => _scanning = true);
     try {
       await _scanHandler.processScanResult(
         widget.rule.id!,
-        path,
+        directory,
         widget.rule.regexPattern,
         widget.rule.formatString,
       );

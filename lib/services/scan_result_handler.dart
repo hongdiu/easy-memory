@@ -28,7 +28,7 @@ class ScanResultHandler {
     MatchGenerator? generator,
     MatchItemRepository? matchItemRepo,
     FileRecordRepository? fileRecordRepo,
-  })  : _scanner = scanner ?? FileScanner(),
+  })  : _scanner = scanner ?? IOFilesystemScanner(),
         _generator = generator ?? MatchGenerator(),
         _matchItemRepo = matchItemRepo ?? MatchItemRepository(),
         _fileRecordRepo = fileRecordRepo ?? FileRecordRepository();
@@ -41,7 +41,7 @@ class ScanResultHandler {
     String regexPattern,
     String formatString,
   ) async {
-    final results = _scanner.scanDirectory(directory, regexPattern);
+    final results = await _scanner.scanDirectory(directory, regexPattern);
     if (results.isEmpty) {
       return const ScanResult(
         scannedFiles: 0,
