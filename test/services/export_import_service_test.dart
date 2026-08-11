@@ -104,20 +104,24 @@ void main() {
     final service = ExportImportService();
     final encrypted = buildEncryptedPayload(
         payloadWith(rules: [makeRule('R1', r'\d+').toMap()]), 'correct');
-    await expectLater(
-      () => service.importFromEncryptedString(encrypted, 'wrong'),
-      throwsA(isA<ExportImportException>()),
-    );
+    try {
+      await service.importFromEncryptedString(encrypted, 'wrong');
+      fail('Expected ExportImportException');
+    } catch (e) {
+      expect(e, isA<ExportImportException>());
+    }
   });
 
   test('wrong version is rejected', () async {
     final service = ExportImportService();
     final encrypted =
         buildEncryptedPayload(payloadWith(version: 99), 'pw');
-    await expectLater(
-      () => service.importFromEncryptedString(encrypted, 'pw'),
-      throwsA(isA<ExportImportException>()),
-    );
+    try {
+      await service.importFromEncryptedString(encrypted, 'pw');
+      fail('Expected ExportImportException');
+    } catch (e) {
+      expect(e, isA<ExportImportException>());
+    }
   });
 
   test('new rules, match items and file records are imported', () async {
