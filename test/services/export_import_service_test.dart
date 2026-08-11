@@ -4,7 +4,6 @@ import 'package:easy_memory/data/database.dart';
 import 'package:easy_memory/data/file_record_repository.dart';
 import 'package:easy_memory/data/match_item_repository.dart';
 import 'package:easy_memory/data/rule_repository.dart';
-import 'package:easy_memory/models/file_record.dart';
 import 'package:easy_memory/models/match_item.dart';
 import 'package:easy_memory/models/rule.dart';
 import 'package:easy_memory/services/export_import_service.dart';

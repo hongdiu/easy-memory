@@ -202,7 +202,6 @@ class ExportImportService {
 
     for (final data in importedFileRecords) {
       var record = FileRecord.fromMap(data);
-      final oldId = record.id;
 
       // Remap match_item_id to the local ID
       final remappedItemId = matchItemIdMap[record.matchItemId];
