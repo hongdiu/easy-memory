@@ -104,7 +104,7 @@ void main() {
     final service = ExportImportService();
     final encrypted = buildEncryptedPayload(
         payloadWith(rules: [makeRule('R1', r'\d+').toMap()]), 'correct');
-    expect(
+    await expectLater(
       () => service.importFromEncryptedString(encrypted, 'wrong'),
       throwsA(isA<ExportImportException>()),
     );
@@ -114,7 +114,7 @@ void main() {
     final service = ExportImportService();
     final encrypted =
         buildEncryptedPayload(payloadWith(version: 99), 'pw');
-    expect(
+    await expectLater(
       () => service.importFromEncryptedString(encrypted, 'pw'),
       throwsA(isA<ExportImportException>()),
     );
@@ -123,16 +123,19 @@ void main() {
   test('new rules, match items and file records are imported', () async {
     final service = ExportImportService();
 
+    // Simulate a real export payload: all records include their original IDs,
+    // which the import logic remaps to local auto-increment IDs.
     final encrypted = buildEncryptedPayload(
       payloadWith(
         rules: [
-          makeRule('PDF 检查', r'\.pdf$').toMap(),
+          makeRule('PDF 检查', r'\.pdf$', id: 1).toMap(),
         ],
         matchItems: [
-          {'rule_id': 1, 'match_value': 'report_2024', 'created_at': '2024-01-01'},
+          {'id': 1, 'rule_id': 1, 'match_value': 'report_2024', 'created_at': '2024-01-01'},
         ],
         fileRecords: [
           {
+            'id': 1,
             'match_item_id': 1,
             'file_name': 'a.pdf',
             'full_path': '/tmp/a.pdf',

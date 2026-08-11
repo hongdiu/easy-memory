@@ -158,7 +158,15 @@ class ExportImportService {
       }
 
       // New rule: insert without ID (let DB auto-assign)
-      final newRule = rule.id == null ? rule : rule.copyWith(id: null);
+      // NOTE: copyWith(id: null) doesn't work — ?? retains the original id.
+      final newRule = Rule(
+        name: rule.name,
+        regexPattern: rule.regexPattern,
+        formatString: rule.formatString,
+        scanDirectory: rule.scanDirectory,
+        createdAt: rule.createdAt,
+        updatedAt: rule.updatedAt,
+      );
       final newId = await _ruleRepo.insert(newRule);
       if (oldId != null) {
         ruleIdMap[oldId] = newId;
@@ -192,7 +200,11 @@ class ExportImportService {
       }
 
       // New match item: insert without ID
-      final newItem = item.copyWith(id: null);
+      final newItem = MatchItem(
+        ruleId: item.ruleId,
+        matchValue: item.matchValue,
+        createdAt: item.createdAt,
+      );
       final newId = await _matchItemRepo.insert(newItem);
       if (oldId != null) {
         matchItemIdMap[oldId] = newId;
@@ -218,7 +230,13 @@ class ExportImportService {
       }
 
       // New file record: insert without ID
-      await _fileRecordRepo.insert(record.copyWith(id: null));
+      await _fileRecordRepo.insert(FileRecord(
+        matchItemId: record.matchItemId,
+        fileName: record.fileName,
+        fullPath: record.fullPath,
+        directory: record.directory,
+        scannedAt: record.scannedAt,
+      ));
       fileCount++;
     }
 
