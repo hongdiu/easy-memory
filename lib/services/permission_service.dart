@@ -3,76 +3,46 @@ import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Android 运行时权限请求服务
+///
+/// 注意：扫描任意目录需要 MANAGE_EXTERNAL_STORAGE（Android 11+）
+/// 或 READ_EXTERNAL_STORAGE（Android 10 以下）。
+/// 媒体权限（READ_MEDIA_IMAGES/VIDEO/AUDIO）仅针对媒体文件，不能用于扫描任意目录。
 class PermissionService {
   /// 请求存储访问权限，返回是否已获得足够权限
   static Future<bool> requestStorage() async {
     if (!Platform.isAndroid) return true;
 
-    // Android 13+ (API 33+) 用细分媒体权限
-    if (await _isAndroid13OrAbove()) {
-      final statuses = await [
-        Permission.photos,
-        Permission.videos,
-        Permission.audio,
-      ].request();
-      final granted = statuses.values.every((s) => s.isGranted || s.isLimited);
-      if (granted) return true;
-      // 媒体权限不够时，尝试 MANAGE_EXTERNAL_STORAGE
-      return await _requestManageExternalStorage();
-    }
-
-    // Android 13 以下用传统存储权限
-    final status = await Permission.storage.request();
-    if (status.isGranted) return true;
-
-    // Android 11+ (API 30+) 可以请求 MANAGE_EXTERNAL_STORAGE
+    // Android 11+：需要 MANAGE_EXTERNAL_STORAGE（"所有文件访问权限"）
+    // 这个权限只能通过系统设置页面授予，无法弹出普通对话框
     if (await _isAndroid11OrAbove()) {
       return await _requestManageExternalStorage();
     }
 
-    return false;
+    // Android 10 及以下：用传统存储权限
+    final status = await Permission.storage.request();
+    return status.isGranted;
   }
 
-  /// 检查当前是否已有权限
+  /// 检查当前是否已有足够权限（用于扫描任意目录）
   static Future<bool> hasStoragePermission() async {
     if (!Platform.isAndroid) return true;
 
-    if (await _isAndroid13OrAbove()) {
-      final photos = await Permission.photos.isGranted || await Permission.photos.isLimited;
-      final videos = await Permission.videos.isGranted || await Permission.videos.isLimited;
-      final audio = await Permission.audio.isGranted || await Permission.audio.isLimited;
-      if (photos || videos || audio) return true;
+    // Android 11+：必须要有 MANAGE_EXTERNAL_STORAGE
+    if (await _isAndroid11OrAbove()) {
       return await Permission.manageExternalStorage.isGranted;
     }
 
-    if (await Permission.storage.isGranted) return true;
-    return await Permission.manageExternalStorage.isGranted;
-  }
-
-  static Future<bool> _isAndroid13OrAbove() async {
-    try {
-      final sdk = await _getAndroidSdkInt();
-      return sdk >= 13;
-    } catch (_) {
-      return false;
-    }
+    // Android 10 及以下：READ_EXTERNAL_STORAGE
+    return await Permission.storage.isGranted;
   }
 
   static Future<bool> _isAndroid11OrAbove() async {
-    try {
-      final sdk = await _getAndroidSdkInt();
-      return sdk >= 11;
-    } catch (_) {
-      return false;
-    }
+    final sdk = await _getAndroidSdkInt();
+    return sdk >= 11;
   }
 
   static Future<int> _getAndroidSdkInt() async {
-    // permission_handler 内部已处理，这里用 manageExternalStorage 的状态间接判断
-    // 简单起见：直接尝试请求，由系统决定是否弹窗
-    final build = Platform.version;
-    debugPrint('[Permission] Platform.version: $build');
-    // 通过 Platform.operatingSystemVersion 解析
+    // Platform.operatingSystemVersion 返回 Android 版本号，如 "13"、"14"、"11"
     final versionStr = Platform.operatingSystemVersion;
     final match = RegExp(r'(\d+)').firstMatch(versionStr);
     if (match != null) {
@@ -85,14 +55,11 @@ class PermissionService {
   static Future<bool> _requestManageExternalStorage() async {
     final status = await Permission.manageExternalStorage.request();
     if (status.isGranted) return true;
-    // 仍未授权，引导用户去系统设置
-    if (status.isPermanentlyDenied) {
-      await openAppSettings();
-    }
     return false;
   }
 
-  /// 打开系统设置，供用户手动授权。返回 true 表示已授权。
+  /// 打开系统设置（"所有文件访问权限"页面），供用户手动授权。
+  /// 返回 true 表示授权成功。
   static Future<bool> openSettingsAndCheck() async {
     await openAppSettings();
     // 从设置返回后重新检查

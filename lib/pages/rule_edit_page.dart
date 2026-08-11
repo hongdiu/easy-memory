@@ -184,6 +184,9 @@ class _RuleEditPageState extends State<RuleEditPage> {
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            ),
             child: _saving
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('保存'),

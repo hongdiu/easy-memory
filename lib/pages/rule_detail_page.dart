@@ -84,8 +84,8 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
           builder: (ctx) => AlertDialog(
             title: const Text('需要存储权限'),
             content: const Text(
-              '扫描文件需要访问您的文件存储。\n\n'
-              '请点击「去授权」跳转到系统设置，授予「文件和媒体」权限。',
+              '扫描文件需要「所有文件访问权限」。\n\n'
+              '请点击「去授权」，在设置中打开「允许访问所有文件」开关。',
             ),
             actions: [
               TextButton(
@@ -141,8 +141,8 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
           builder: (ctx) => AlertDialog(
             title: const Text('需要存储权限'),
             content: const Text(
-              '更换目录并扫描文件需要访问您的文件存储。\n\n'
-              '请点击「去授权」跳转到系统设置，授予「文件和媒体」权限。',
+              '更换目录并扫描文件需要「所有文件访问权限」。\n\n'
+              '请点击「去授权」，在设置中打开「允许访问所有文件」开关。',
             ),
             actions: [
               TextButton(

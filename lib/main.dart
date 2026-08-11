@@ -101,8 +101,8 @@ class _HomePageState extends State<_HomePage> {
           builder: (ctx) => AlertDialog(
             title: const Text('需要存储权限'),
             content: const Text(
-              'Easy Memory 需要访问您的文件存储，才能扫描目录中的文件并按规则匹配。\n\n'
-              '请点击「去授权」跳转到系统设置，授予「文件和媒体」权限。',
+              'Easy Memory 需要「所有文件访问权限」才能扫描您选择的目录。\n\n'
+              '请点击「去授权」，在设置中打开「允许访问所有文件」开关。',
             ),
             actions: [
               TextButton(
