@@ -37,6 +37,19 @@ class RuleRepository {
     return await db.delete('rules', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Find a rule by its natural key (name + regex_pattern).
+  /// Used for cross-device import merge to avoid ID collisions.
+  Future<Rule?> findByNameAndPattern(String name, String regexPattern) async {
+    final db = await _dbHelper.database;
+    final maps = await db.query(
+      'rules',
+      where: 'name = ? AND regex_pattern = ?',
+      whereArgs: [name, regexPattern],
+    );
+    if (maps.isEmpty) return null;
+    return Rule.fromMap(maps.first);
+  }
+
   Future<void> deleteWithCascade(int id) async {
     final db = await _dbHelper.database;
     await db.transaction((txn) async {

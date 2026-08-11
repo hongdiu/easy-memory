@@ -20,6 +20,20 @@ class FileRecordRepository {
     return maps.map((m) => FileRecord.fromMap(m)).toList();
   }
 
+  /// Find a file record by its natural key (match_item_id + full_path).
+  /// Used for cross-device import merge to avoid ID collisions.
+  Future<FileRecord?> findByMatchItemIdAndPath(
+      int matchItemId, String fullPath) async {
+    final db = await _dbHelper.database;
+    final maps = await db.query(
+      'file_records',
+      where: 'match_item_id = ? AND full_path = ?',
+      whereArgs: [matchItemId, fullPath],
+    );
+    if (maps.isEmpty) return null;
+    return FileRecord.fromMap(maps.first);
+  }
+
   Future<int> delete(int id) async {
     final db = await _dbHelper.database;
     return await db.delete('file_records', where: 'id = ?', whereArgs: [id]);

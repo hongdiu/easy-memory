@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:sm_crypto/sm_crypto.dart';
 
 import 'package:easy_memory/models/rule.dart';
@@ -10,7 +11,6 @@ import 'package:easy_memory/models/file_record.dart';
 import 'package:easy_memory/data/rule_repository.dart';
 import 'package:easy_memory/data/match_item_repository.dart';
 import 'package:easy_memory/data/file_record_repository.dart';
-import 'package:easy_memory/data/database.dart';
 
 class ExportImportService {
   final RuleRepository _ruleRepo = RuleRepository();
@@ -41,9 +41,9 @@ class ExportImportService {
       }
     }
 
-    // 2. Build export payload
+    // 2. Build export payload (version 2 = natural-key merge support)
     final payload = {
-      'version': 1,
+      'version': 2,
       'exported_at': DateTime.now().toUtc().toIso8601String(),
       'rules': rulesJson,
       'match_items': matchItemsJson,
@@ -71,7 +71,7 @@ class ExportImportService {
     return path;
   }
 
-  /// Import data from an encrypted .emdb file.
+  /// Import data from an encrypted .emdb file (picked via file_picker).
   /// Returns a summary string of what was imported.
   Future<String> importData(String password) async {
     // 1. Pick file
@@ -89,7 +89,15 @@ class ExportImportService {
     final filePath = file.path!;
     final encrypted = await File(filePath).readAsString();
 
-    // 2. Decrypt with SM4
+    return importFromEncryptedString(encrypted, password);
+  }
+
+  /// Core import logic: decrypt, parse, and merge with natural-key matching.
+  /// Extracted for testability — tests can call this directly.
+  @visibleForTesting
+  Future<String> importFromEncryptedString(
+      String encrypted, String password) async {
+    // 1. Decrypt with SM4
     final key = SM4.createHexKey(key: password);
     String jsonString;
     try {
@@ -98,7 +106,7 @@ class ExportImportService {
       throw ExportImportException('解密失败：密码错误或文件损坏');
     }
 
-    // 3. Parse JSON
+    // 2. Parse JSON
     Map<String, dynamic> payload;
     try {
       payload = jsonDecode(jsonString) as Map<String, dynamic>;
@@ -106,52 +114,112 @@ class ExportImportService {
       throw ExportImportException('文件格式错误：不是有效的 JSON 数据');
     }
 
-    // 4. Validate version
+    // 3. Validate version
     final version = payload['version'] as int?;
-    if (version == null || version != 1) {
+    if (version == null || version < 1 || version > 2) {
       throw ExportImportException('不支持的版本号: $version');
     }
 
-    // 5. Import - merge into DB, skip duplicates by ID
-    final importedRules = (payload['rules'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    final importedMatchItems = (payload['match_items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    final importedFileRecords = (payload['file_records'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    // 4. Parse imported data
+    final importedRules =
+        (payload['rules'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final importedMatchItems =
+        (payload['match_items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final importedFileRecords =
+        (payload['file_records'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+    // 5. Merge with natural-key matching + FK remapping
+    //
+    // Strategy:
+    //   - Rules:     match by (name + regex_pattern)
+    //   - MatchItems: match by (remapped_rule_id + match_value)
+    //   - FileRecords: match by (remapped_match_item_id + full_path)
+    //
+    // old_id → new_id maps are maintained so FK references are remapped.
 
     int ruleCount = 0, matchCount = 0, fileCount = 0;
 
+    // old rule.id → new/existing rule.id
+    final Map<int, int> ruleIdMap = {};
+
     for (final data in importedRules) {
       final rule = Rule.fromMap(data);
-      if (rule.id != null) {
-        final existing = await _ruleRepo.getById(rule.id!);
-        if (existing != null) continue; // skip duplicate
+      final oldId = rule.id;
+
+      // Try to match by natural key (name + regex_pattern)
+      final existing = await _ruleRepo.findByNameAndPattern(
+          rule.name, rule.regexPattern);
+      if (existing != null) {
+        // Duplicate: use existing ID, skip insert
+        if (oldId != null) {
+          ruleIdMap[oldId] = existing.id!;
+        }
+        continue;
       }
-      await _ruleRepo.insert(rule);
+
+      // New rule: insert without ID (let DB auto-assign)
+      final newRule = rule.id == null ? rule : rule.copyWith(id: null);
+      final newId = await _ruleRepo.insert(newRule);
+      if (oldId != null) {
+        ruleIdMap[oldId] = newId;
+      }
       ruleCount++;
     }
 
+    // old match_item.id → new/existing match_item.id
+    final Map<int, int> matchItemIdMap = {};
+
     for (final data in importedMatchItems) {
-      final item = MatchItem.fromMap(data);
-      if (item.id != null) {
-        final existing = await _matchItemRepo.getById(item.id!);
-        if (existing != null) continue; // skip duplicate
+      var item = MatchItem.fromMap(data);
+      final oldId = item.id;
+
+      // Remap rule_id to the local ID
+      final remappedRuleId = ruleIdMap[item.ruleId];
+      if (remappedRuleId == null) {
+        // Rule was not imported (shouldn't happen, but skip if orphaned)
+        continue;
       }
-      await _matchItemRepo.insert(item);
+      item = item.copyWith(ruleId: remappedRuleId);
+
+      // Try to match by natural key (remapped_rule_id + match_value)
+      final existing = await _matchItemRepo.findByRuleIdAndValue(
+          remappedRuleId, item.matchValue);
+      if (existing != null) {
+        if (oldId != null) {
+          matchItemIdMap[oldId] = existing.id!;
+        }
+        continue;
+      }
+
+      // New match item: insert without ID
+      final newItem = item.copyWith(id: null);
+      final newId = await _matchItemRepo.insert(newItem);
+      if (oldId != null) {
+        matchItemIdMap[oldId] = newId;
+      }
       matchCount++;
     }
 
     for (final data in importedFileRecords) {
-      final record = FileRecord.fromMap(data);
-      // ponytail: no getById on FileRecordRepository, check via direct DB access
-      if (record.id != null) {
-        final db = await DatabaseHelper.instance.database;
-        final existing = await db.query(
-          'file_records',
-          where: 'id = ?',
-          whereArgs: [record.id],
-        );
-        if (existing.isNotEmpty) continue;
+      var record = FileRecord.fromMap(data);
+      final oldId = record.id;
+
+      // Remap match_item_id to the local ID
+      final remappedItemId = matchItemIdMap[record.matchItemId];
+      if (remappedItemId == null) {
+        continue;
       }
-      await _fileRecordRepo.insert(record);
+      record = record.copyWith(matchItemId: remappedItemId);
+
+      // Try to match by natural key (remapped_match_item_id + full_path)
+      final existing = await _fileRecordRepo.findByMatchItemIdAndPath(
+          remappedItemId, record.fullPath);
+      if (existing != null) {
+        continue;
+      }
+
+      // New file record: insert without ID
+      await _fileRecordRepo.insert(record.copyWith(id: null));
       fileCount++;
     }
 
