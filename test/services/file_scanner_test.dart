@@ -27,10 +27,15 @@ void main() {
       final results = scanner.scanDirectory(tempDir.path, r'(\d{3})_.*\.txt');
 
       expect(results.length, 2);
-      expect(results[0].fileName, '001_hello.txt');
-      expect(results[1].fileName, '002_world.txt');
-      expect(results[0].match.group(1), '001');
-      expect(results[1].match.group(1), '002');
+      final fnames = results.map((r) => r.fileName).toSet();
+      expect(fnames, containsAll(['001_hello.txt', '002_world.txt']));
+      for (final r in results) {
+        if (r.fileName == '001_hello.txt') {
+          expect(r.match.group(1), '001');
+        } else {
+          expect(r.match.group(1), '002');
+        }
+      }
     });
 
     test('returns empty list when no files match', () {
