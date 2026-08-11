@@ -91,4 +91,11 @@ class PermissionService {
     }
     return false;
   }
+
+  /// 打开系统设置，供用户手动授权。返回 true 表示已授权。
+  static Future<bool> openSettingsAndCheck() async {
+    await openAppSettings();
+    // 从设置返回后重新检查
+    return hasStoragePermission();
+  }
 }

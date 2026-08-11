@@ -180,7 +180,7 @@ class _RuleEditPageState extends State<RuleEditPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? '编辑规则' : '新建规则'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: Theme.of(context).colorScheme.primary,
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,

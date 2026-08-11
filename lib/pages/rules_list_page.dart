@@ -83,7 +83,7 @@ class _RulesListPageState extends State<RulesListPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('规则管理'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: Theme.of(context).colorScheme.primary,
         actions: [
           IconButton(
             icon: const Icon(Icons.backup_outlined),

@@ -19,7 +19,7 @@ class _ExportImportPageState extends State<ExportImportPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('数据导入/导出'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: Center(
         child: Padding(

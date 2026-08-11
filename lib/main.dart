@@ -93,7 +93,33 @@ class _HomePageState extends State<_HomePage> {
   Future<void> _checkAndRequestPermission() async {
     final hasPermission = await PermissionService.hasStoragePermission();
     if (!hasPermission && mounted) {
-      await PermissionService.requestStorage();
+      final granted = await PermissionService.requestStorage();
+      if (!granted && mounted) {
+        // 首次请求失败，弹窗引导用户去设置
+        final goSettings = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('需要存储权限'),
+            content: const Text(
+              'Easy Memory 需要访问您的文件存储，才能扫描目录中的文件并按规则匹配。\n\n'
+              '请点击「去授权」跳转到系统设置，授予「文件和媒体」权限。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('稍后'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('去授权'),
+              ),
+            ],
+          ),
+        );
+        if (goSettings == true && mounted) {
+          await PermissionService.openSettingsAndCheck();
+        }
+      }
     }
   }
 

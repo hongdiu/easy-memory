@@ -105,7 +105,7 @@ class _GlobalQueryPageState extends State<GlobalQueryPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('全局查询'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: Column(
         children: [

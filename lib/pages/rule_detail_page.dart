@@ -79,9 +79,29 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
     final granted = await PermissionService.requestStorage();
     if (!granted) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('需要存储权限才能扫描文件，请在系统设置中授权')),
+        final goSettings = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('需要存储权限'),
+            content: const Text(
+              '扫描文件需要访问您的文件存储。\n\n'
+              '请点击「去授权」跳转到系统设置，授予「文件和媒体」权限。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('去授权'),
+              ),
+            ],
+          ),
         );
+        if (goSettings == true && mounted) {
+          await PermissionService.openSettingsAndCheck();
+        }
       }
       return;
     }
@@ -116,9 +136,29 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
     final granted = await PermissionService.requestStorage();
     if (!granted) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('需要存储权限才能扫描文件，请在系统设置中授权')),
+        final goSettings = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('需要存储权限'),
+            content: const Text(
+              '更换目录并扫描文件需要访问您的文件存储。\n\n'
+              '请点击「去授权」跳转到系统设置，授予「文件和媒体」权限。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('去授权'),
+              ),
+            ],
+          ),
         );
+        if (goSettings == true && mounted) {
+          await PermissionService.openSettingsAndCheck();
+        }
       }
       return;
     }
@@ -156,7 +196,7 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.rule.name),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
