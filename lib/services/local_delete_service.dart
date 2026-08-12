@@ -25,15 +25,16 @@ class LocalDeleteService {
 
   /// Delete [record]'s physical file **and** its DB row.
   ///
-  /// The DB record is **always** removed, even if the physical file is
-  /// already missing or its deletion fails — the goal is to keep the DB
-  /// free of ghost records.
+  /// If the physical file exists, it is deleted first. Only when the file
+  /// is already missing (SafNotFoundException / File not found) is the DB
+  /// record removed without a physical delete. Other errors (permission,
+  /// IO) abort the operation and leave the DB record intact.
   ///
   /// Returns [LocalDeleteResult] — the caller is responsible for refreshing
   /// the UI on success.
   Future<LocalDeleteResult> delete(FileRecord record) async {
     try {
-      // 1. Delete physical file (best-effort — missing file is not an error)
+      // 1. Delete physical file — must succeed unless file is already gone
       final path = record.fullPath;
       if (path.startsWith('content://')) {
         // Android SAF
@@ -41,8 +42,8 @@ class LocalDeleteService {
           final saf = Saf();
           try {
             await saf.delete(path);
-          } catch (_) {
-            // File already gone or deletion failed — DB record still cleared
+          } on SafNotFoundException {
+            // File already gone → DB record still cleared below
           }
         } else {
           return const LocalDeleteResult(
@@ -55,7 +56,7 @@ class LocalDeleteService {
         await File(path).delete();
       }
 
-      // 2. Delete DB record — always
+      // 2. Delete DB record — reached only if file was deleted or was missing
       await _fileRecordRepo.delete(record.id!);
 
       return const LocalDeleteResult(success: true, message: '删除成功');

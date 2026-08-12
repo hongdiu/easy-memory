@@ -215,10 +215,10 @@ class WebServerService {
 
   /// POST /api/delete — delete a file by path (filesystem path or SAF URI)
   ///
-  /// The DB record is **always** removed, even if the physical file is
-  /// already missing or its deletion fails — the goal is to keep the DB
-  /// free of ghost records. A warning is returned when the physical file
-  /// was already missing.
+  /// If the physical file exists, it is deleted first. Only when the file
+  /// is already missing (SafNotFoundException / File not found) is the DB
+  /// record removed without a physical delete. Other errors (permission,
+  /// IO) abort the operation and leave the DB record intact.
   Future<shelf.Response> _handleDelete(shelf.Request request) async {
     try {
       final body = jsonDecode(await request.readAsString())
@@ -229,7 +229,7 @@ class WebServerService {
             body: jsonEncode({'success': false, 'error': '缺少 path 参数'}));
       }
 
-      // 1. Delete physical file (best-effort — missing file is not an error)
+      // 1. Delete physical file — must succeed unless file is already gone
       var fileMissing = false;
       if (path.startsWith('content://')) {
         // Android SAF URI — only supported on Android
@@ -240,8 +240,8 @@ class WebServerService {
         final saf = Saf();
         try {
           await saf.delete(path);
-        } catch (_) {
-          // File already gone or deletion failed — DB record still cleared
+        } on SafNotFoundException {
+          // File already gone → DB record still cleared below
           fileMissing = true;
         }
       } else if (await File(path).exists()) {
@@ -252,7 +252,7 @@ class WebServerService {
         fileMissing = true;
       }
 
-      // 2. Delete DB record — always
+      // 2. Delete DB record — reached only if file was deleted or was missing
       final deletedRows = await _fileRecordRepo.deleteByFullPath(path);
       final response = {'success': true};
       if (deletedRows == 0) {
