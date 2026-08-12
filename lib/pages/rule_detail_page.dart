@@ -9,7 +9,6 @@ import 'package:easy_memory/models/match_item.dart';
 import 'package:easy_memory/models/file_record.dart';
 import 'package:easy_memory/data/match_item_repository.dart';
 import 'package:easy_memory/data/file_record_repository.dart';
-import 'package:easy_memory/data/rule_repository.dart';
 import 'package:easy_memory/services/file_scanner.dart';
 import 'package:easy_memory/services/saf_file_scanner.dart';
 import 'package:easy_memory/services/scan_result_handler.dart';
@@ -27,7 +26,6 @@ class RuleDetailPage extends StatefulWidget {
 class _RuleDetailPageState extends State<RuleDetailPage> {
   final MatchItemRepository _matchItemRepo = MatchItemRepository();
   final FileRecordRepository _fileRecordRepo = FileRecordRepository();
-  final RuleRepository _ruleRepo = RuleRepository();
   late final FileScanner _scanner;
   late final ScanResultHandler _scanHandler;
 
@@ -87,10 +85,8 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
       return;
     }
 
-    String directory = widget.rule.scanDirectory!;
-
+    // Android 使用 SAF，无需 MANAGE_EXTERNAL_STORAGE 权限
     if (!_isAndroid) {
-      // 桌面：请求文件系统权限
       final granted = await PermissionService.requestStorage();
       if (!granted) {
         if (mounted) {
@@ -126,7 +122,7 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
     try {
       await _scanHandler.processScanResult(
         widget.rule.id!,
-        directory,
+        widget.rule.scanDirectory!,
         widget.rule.regexPattern,
         widget.rule.formatString,
       );
