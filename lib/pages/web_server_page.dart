@@ -214,7 +214,7 @@ class _WebServerPageState extends State<WebServerPage> {
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
+    if (confirmed != true || !mounted) return;
 
     final service = CleanupService();
     final progress = ValueNotifier<CleanupProgress>(

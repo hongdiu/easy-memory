@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:saf/saf.dart';
 
 import '../data/file_record_repository.dart';
-import '../models/file_record.dart';
 
 /// Progress of a cleanup operation.
 class CleanupProgress {
