@@ -254,7 +254,7 @@ class WebServerService {
 
       // 2. Delete DB record — reached only if file was deleted or was missing
       final deletedRows = await _fileRecordRepo.deleteByFullPath(path);
-      final response = {'success': true};
+      final Map<String, dynamic> response = {'success': true};
       if (deletedRows == 0) {
         response['warning'] =
             '物理文件已删除，但未找到匹配的 DB 记录 (full_path 不一致)';

@@ -77,4 +77,11 @@ class FileRecordRepository {
     );
     return maps.map((m) => FileRecord.fromMap(m)).toList();
   }
+
+  /// Fetch all file records (used by cleanup).
+  Future<List<FileRecord>> getAll() async {
+    final db = await _dbHelper.database;
+    final maps = await db.query('file_records', orderBy: 'id ASC');
+    return maps.map((m) => FileRecord.fromMap(m)).toList();
+  }
 }

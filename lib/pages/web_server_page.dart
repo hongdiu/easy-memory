@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/remote_endpoint.dart';
 import '../services/web_server_service.dart';
 import '../services/sync_service.dart';
+import '../services/cleanup_service.dart';
 
 class WebServerPage extends StatefulWidget {
   const WebServerPage({super.key});
@@ -191,6 +192,67 @@ class _WebServerPageState extends State<WebServerPage> {
     );
   }
 
+  /// Start a cleanup of ghost DB records and show the progress dialog.
+  Future<void> _startCleanup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('数据清理'),
+        content: const Text(
+          '将检查本机路径对应的文件是否存在，删除文件已不存在的幽灵记录。\n\n'
+          '仅处理本机平台的路径（远程同步来的记录会跳过）。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('开始清理'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final service = CleanupService();
+    final progress = ValueNotifier<CleanupProgress>(
+      const CleanupProgress(percent: 0, message: '准备清理...'),
+    );
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => _CleanupProgressDialog(progress: progress),
+    );
+
+    final result = await service.cleanup(
+      onProgress: (p) => progress.value = p,
+    );
+
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('清理完成'),
+        content: Text(
+          '共 ${result.totalRecords} 条记录\n'
+          '本地路径 ${result.localRecords} 条\n'
+          '清理幽灵记录 ${result.cleanedRecords} 条',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -354,6 +416,22 @@ class _WebServerPageState extends State<WebServerPage> {
                     ),
                   ),
               ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Data cleanup panel
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.cleaning_services_outlined),
+              title: const Text('数据清理'),
+              subtitle: const Text('删除文件已不存在的幽灵记录 (仅限本机路径)'),
+              trailing: OutlinedButton.icon(
+                onPressed: _startCleanup,
+                icon: const Icon(Icons.cleaning_services, size: 18),
+                label: const Text('清理'),
+              ),
             ),
           ),
         ],
@@ -560,6 +638,48 @@ class _SyncProgressDialog extends StatelessWidget {
       content: SizedBox(
         width: 320,
         child: ValueListenableBuilder<SyncProgress>(
+          valueListenable: progress,
+          builder: (context, p, _) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(value: p.percent / 100.0),
+                const SizedBox(height: 16),
+                Text(
+                  '${p.percent}%',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  p.message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Cleanup progress dialog shown during data cleanup.
+class _CleanupProgressDialog extends StatelessWidget {
+  final ValueNotifier<CleanupProgress> progress;
+
+  const _CleanupProgressDialog({required this.progress});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('数据清理'),
+      content: SizedBox(
+        width: 320,
+        child: ValueListenableBuilder<CleanupProgress>(
           valueListenable: progress,
           builder: (context, p, _) {
             return Column(
