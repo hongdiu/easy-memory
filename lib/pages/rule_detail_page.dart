@@ -129,9 +129,10 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
         final reauth = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('授权已过期'),
+            title: const Text('需要重新授权'),
             content: const Text(
-              '扫描目录的访问授权已过期，请重新选择该目录以恢复授权。',
+              '该规则的扫描目录不是有效的 SAF URI（可能是旧版本创建的规则），'
+              '请重新选择目录以获取授权。',
             ),
             actions: [
               TextButton(

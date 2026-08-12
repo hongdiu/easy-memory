@@ -1,5 +1,9 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:saf/saf.dart';
 import 'package:easy_memory/models/rule.dart';
 import 'package:easy_memory/data/rule_repository.dart';
 
@@ -129,7 +133,16 @@ class _RuleEditPageState extends State<RuleEditPage> {
   }
 
   Future<void> _pickDirectory() async {
-    final path = await FilePicker.getDirectoryPath();
+    String? path;
+    if (!kIsWeb && Platform.isAndroid) {
+      // Android: 使用 SAF 选目录，返回 content:// URI，与 SafFileScanner 兼容
+      final saf = Saf();
+      final dir = await saf.pickDirectory();
+      path = dir?.uri;
+    } else {
+      // 桌面: 使用 FilePicker 选文件系统路径
+      path = await FilePicker.getDirectoryPath();
+    }
     if (path != null) {
       _dirController.text = path;
     }
