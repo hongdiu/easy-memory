@@ -14,6 +14,8 @@ import 'package:easy_memory/services/saf_file_scanner.dart';
 import 'package:easy_memory/services/scan_result_handler.dart';
 import 'package:easy_memory/services/permission_service.dart';
 import 'package:easy_memory/services/local_delete_service.dart';
+import 'package:easy_memory/services/remote_delete_service.dart';
+import 'package:easy_memory/models/remote_endpoint.dart';
 import 'package:easy_memory/pages/file_record_detail_page.dart';
 
 class RuleDetailPage extends StatefulWidget {
@@ -37,6 +39,7 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
   bool _scanning = false;
 
   final LocalDeleteService _localDeleteService = LocalDeleteService();
+  final RemoteDeleteService _remoteDeleteService = RemoteDeleteService();
 
   @override
   void initState() {
@@ -426,6 +429,11 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
                   ),
                 ),
                 const SizedBox(width: 4),
+                _RemoteDeleteButton(
+                  filePath: record.fullPath,
+                  service: _remoteDeleteService,
+                ),
+                const SizedBox(width: 4),
                 IconButton(
                   icon: const Icon(Icons.copy, size: 16),
                   tooltip: '复制路径',
@@ -440,6 +448,129 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+}
+
+/// A small icon button that triggers the remote delete flow (cross-device).
+class _RemoteDeleteButton extends StatelessWidget {
+  final String filePath;
+  final RemoteDeleteService service;
+
+  const _RemoteDeleteButton({
+    required this.filePath,
+    required this.service,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '远程删除',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _onTap(context),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(Icons.cloud_off_outlined, size: 16, color: Colors.red[300]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onTap(BuildContext context) async {
+    final endpoints = await service.loadEndpoints();
+    if (!context.mounted) return;
+
+    if (endpoints.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先在 Web 服务页面配置远程地址'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    if (endpoints.length == 1) {
+      // Single endpoint — delete directly
+      await _confirmAndDelete(context, endpoints.first);
+      return;
+    }
+
+    // Multiple endpoints — let user choose
+    if (!context.mounted) return;
+    final selected = await showModalBottomSheet<RemoteEndpoint>(
+      context: context,
+      builder: (ctx) => _EndpointPickerSheet(endpoints: endpoints),
+    );
+    if (selected != null && context.mounted) {
+      await _confirmAndDelete(context, selected);
+    }
+  }
+
+  Future<void> _confirmAndDelete(BuildContext context, RemoteEndpoint endpoint) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('远程删除'),
+        content: Text('确定在「${endpoint.label}」(${endpoint.host}) 上删除此文件？\n\n$filePath'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('正在删除...'), duration: Duration(seconds: 1)),
+    );
+
+    final result = await service.deleteFile(endpoint: endpoint, filePath: filePath);
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.success ? '删除成功' : '删除失败: ${result.message}'),
+        backgroundColor: result.success ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet to pick a remote endpoint from a list.
+class _EndpointPickerSheet extends StatelessWidget {
+  final List<RemoteEndpoint> endpoints;
+
+  const _EndpointPickerSheet({required this.endpoints});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Text('选择远程设备', style: Theme.of(context).textTheme.titleMedium),
+          ),
+          const Divider(height: 1),
+          ...endpoints.map((e) => ListTile(
+                leading: const Icon(Icons.computer),
+                title: Text(e.label),
+                subtitle: Text(e.host),
+                onTap: () => Navigator.of(context).pop(e),
+              )),
+        ],
       ),
     );
   }
