@@ -88,11 +88,13 @@ class _RulesListPageState extends State<RulesListPage> {
           IconButton(
             icon: const Icon(Icons.backup_outlined),
             tooltip: '导入/导出数据',
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ExportImportPage()),
               );
+              // 导入完成后刷新最新数据
+              await _loadRules();
             },
           ),
         ],

@@ -131,7 +131,9 @@ class ExportImportService {
     // 5. Merge with natural-key matching + FK remapping
     //
     // Strategy:
-    //   - Rules:     match by (name + regex_pattern)
+    //   - Rules:     match by regex_pattern only. If a local rule already has
+    //                the same regex, merge into it and keep the LOCAL rule's
+    //                name (当前端为准). Otherwise insert with the imported name.
     //   - MatchItems: match by (remapped_rule_id + match_value)
     //   - FileRecords: match by (remapped_match_item_id + full_path)
     //
@@ -146,11 +148,12 @@ class ExportImportService {
       final rule = Rule.fromMap(data);
       final oldId = rule.id;
 
-      // Try to match by natural key (name + regex_pattern)
-      final existing = await _ruleRepo.findByNameAndPattern(
-          rule.name, rule.regexPattern);
+      // Match by regex_pattern only: if the current app already has a rule
+      // with the same regex (even if the name differs), merge into it.
+      final existing = await _ruleRepo.findByPattern(rule.regexPattern);
       if (existing != null) {
-        // Duplicate: use existing ID, skip insert
+        // Duplicate: use existing ID, skip insert.
+        // Keep the local rule's name/fields (当前端为准) — do not overwrite.
         if (oldId != null) {
           ruleIdMap[oldId] = existing.id!;
         }

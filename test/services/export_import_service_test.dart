@@ -174,7 +174,7 @@ void main() {
 
     final service = ExportImportService();
 
-    // Device B payload: rule id=1 named 'PDF 检查' — same natural key as local, ID collides.
+    // Device B payload: rule id=1 named 'PDF 检查' — same regex_pattern as local, ID collides.
     final encrypted = buildEncryptedPayload(
       payloadWith(
         rules: [makeRule('PDF 检查', r'\.pdf$', id: 1).toMap()],
@@ -185,12 +185,14 @@ void main() {
     final summary = await service.importFromEncryptedString(encrypted, 'pw');
     expect(summary, contains('0 条规则'));
 
-    // Still only one rule with the same natural key.
+    // Still only one rule with the same regex_pattern.
     final rules = await ruleRepo.getAll();
     expect(rules.length, 1);
-    final existing = await ruleRepo.findByNameAndPattern('PDF 检查', r'\.pdf$');
+    final existing = await ruleRepo.findByPattern(r'\.pdf$');
     expect(existing, isNotNull);
     expect(existing!.id, localId);
+    // Local rule's name is preserved (当前端为准)
+    expect(existing.name, 'PDF 检查');
   });
 
   test('cross-device merge: different rule with SAME id survives (no data loss)', () async {
@@ -214,6 +216,59 @@ void main() {
     // Both rules must coexist despite the shared id=1.
     final rules = await ruleRepo.getAll();
     expect(rules.length, 2);
+  });
+
+  test('cross-device merge: same pattern, DIFFERENT name — merge into local, keep local name', () async {
+    final ruleRepo = RuleRepository();
+    // Local: rule named 'PDF检查' with pattern \.pdf$
+    final localId = await ruleRepo.insert(makeRule('PDF检查', r'\.pdf$'));
+    expect(localId, 1);
+
+    final service = ExportImportService();
+
+    // Imported: same pattern \.pdf$ but named 'PDF Document Check' (different name).
+    final encrypted = buildEncryptedPayload(
+      payloadWith(
+        rules: [makeRule('PDF Document Check', r'\.pdf$', id: 10).toMap()],
+      ),
+      'pw',
+    );
+
+    final summary = await service.importFromEncryptedString(encrypted, 'pw');
+    expect(summary, contains('0 条规则'));
+
+    // Still only one rule — merged by pattern.
+    final rules = await ruleRepo.getAll();
+    expect(rules.length, 1);
+    // Local name is kept (当前端为准), not overwritten by imported name.
+    expect(rules.first.name, 'PDF检查');
+    expect(rules.first.id, localId);
+  });
+
+  test('cross-device merge: new pattern is inserted with imported name', () async {
+    final ruleRepo = RuleRepository();
+    // Local: rule with pattern \.pdf$
+    await ruleRepo.insert(makeRule('PDF检查', r'\.pdf$'));
+
+    final service = ExportImportService();
+
+    // Imported: different pattern \.jpg$ — no local match, should insert new rule
+    // with the imported name '图片检查'.
+    final encrypted = buildEncryptedPayload(
+      payloadWith(
+        rules: [makeRule('图片检查', r'\.jpg$', id: 2).toMap()],
+      ),
+      'pw',
+    );
+
+    final summary = await service.importFromEncryptedString(encrypted, 'pw');
+    expect(summary, contains('1 条规则'));
+
+    final rules = await ruleRepo.getAll();
+    expect(rules.length, 2);
+    expect(rules.any((r) => r.name == 'PDF检查'), isTrue);
+    // Imported rule uses its own name since no local rule matched.
+    expect(rules.any((r) => r.name == '图片检查'), isTrue);
   });
 
   test('match items remap rule_id to the local rule id', () async {

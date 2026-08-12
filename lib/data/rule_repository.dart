@@ -50,6 +50,20 @@ class RuleRepository {
     return Rule.fromMap(maps.first);
   }
 
+  /// Find a rule by its regex_pattern only.
+  /// Used for cross-device import merge: if the regex pattern matches,
+  /// the imported rule is merged into the existing local rule regardless of name.
+  Future<Rule?> findByPattern(String regexPattern) async {
+    final db = await _dbHelper.database;
+    final maps = await db.query(
+      'rules',
+      where: 'regex_pattern = ?',
+      whereArgs: [regexPattern],
+    );
+    if (maps.isEmpty) return null;
+    return Rule.fromMap(maps.first);
+  }
+
   Future<void> deleteWithCascade(int id) async {
     final db = await _dbHelper.database;
     await db.transaction((txn) async {
