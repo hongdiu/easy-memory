@@ -20,10 +20,11 @@ void main() {
     receivedApiKey = null;
     receivedPath = null;
 
-    final handler = (shelf.Request request) async {
+    Future<shelf.Response> handler(shelf.Request request) async {
       if (request.url.path == 'api/delete') {
-        final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
-        receivedPath = body['path'] as String?;
+        final body = await request.readAsString();
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        receivedPath = data['path'] as String?;
         receivedApiKey = request.headers['x-api-key'];
 
         if (request.headers['x-api-key'] == 'wrong-key') {
@@ -34,7 +35,7 @@ void main() {
         return shelf.Response.ok(jsonEncode({'success': true}));
       }
       return shelf.Response.notFound('Not Found');
-    };
+    }
 
     server = await shelf_io.serve(handler, InternetAddress.loopbackIPv4, 0);
     port = server.port;
