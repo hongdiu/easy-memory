@@ -41,6 +41,21 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
   final LocalDeleteService _localDeleteService = LocalDeleteService();
   final RemoteDeleteService _remoteDeleteService = RemoteDeleteService();
 
+  /// Whether [path] belongs to the current device (local) vs. a remote device.
+  static bool _isLocalPath(String path) {
+    if (kIsWeb) return false;
+    if (Platform.isWindows) {
+      return RegExp(r'^[A-Za-z]:[\\/]').hasMatch(path);
+    }
+    if (Platform.isAndroid) {
+      return path.startsWith('content://') || path.startsWith('/storage/');
+    }
+    if (Platform.isLinux || Platform.isMacOS) {
+      return path.startsWith('/');
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -425,23 +440,24 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Tooltip(
-                  message: '删除文件',
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => _confirmLocalDelete(context, record),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(Icons.delete_outline, size: 16, color: Colors.red[300]),
+                if (_isLocalPath(record.fullPath))
+                  Tooltip(
+                    message: '删除文件',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => _confirmLocalDelete(context, record),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(Icons.delete_outline, size: 16, color: Colors.red[300]),
+                      ),
                     ),
+                  )
+                else
+                  _RemoteDeleteButton(
+                    file: record,
+                    service: _remoteDeleteService,
+                    onDeleted: (deleted) => _onRemoteDeleted(deleted),
                   ),
-                ),
-                const SizedBox(width: 4),
-                _RemoteDeleteButton(
-                  file: record,
-                  service: _remoteDeleteService,
-                  onDeleted: (deleted) => _onRemoteDeleted(deleted),
-                ),
                 const SizedBox(width: 4),
                 IconButton(
                   icon: const Icon(Icons.copy, size: 16),

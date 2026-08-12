@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -257,6 +258,21 @@ class _SearchResultCardState extends State<_SearchResultCard> {
   final LocalDeleteService _localDeleteService = LocalDeleteService();
   bool _expanded = false;
 
+  /// Whether [path] belongs to the current device (local) vs. a remote device.
+  static bool _isLocalPath(String path) {
+    if (kIsWeb) return false;
+    if (Platform.isWindows) {
+      return RegExp(r'^[A-Za-z]:[\\/]').hasMatch(path);
+    }
+    if (Platform.isAndroid) {
+      return path.startsWith('content://') || path.startsWith('/storage/');
+    }
+    if (Platform.isLinux || Platform.isMacOS) {
+      return path.startsWith('/');
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = widget.result;
@@ -391,17 +407,18 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                     },
                   ),
                   const SizedBox(width: 8),
-                  _LocalDeleteButton(
-                    file: file,
-                    service: _localDeleteService,
-                    onDeleted: (deleted) => widget.onFileDeleted(deleted),
-                  ),
-                  const SizedBox(width: 8),
-                  _RemoteDeleteButton(
-                    file: file,
-                    service: _remoteDeleteService,
-                    onDeleted: (deleted) => widget.onFileDeleted(deleted),
-                  ),
+                  if (_isLocalPath(file.fullPath))
+                    _LocalDeleteButton(
+                      file: file,
+                      service: _localDeleteService,
+                      onDeleted: (deleted) => widget.onFileDeleted(deleted),
+                    )
+                  else
+                    _RemoteDeleteButton(
+                      file: file,
+                      service: _remoteDeleteService,
+                      onDeleted: (deleted) => widget.onFileDeleted(deleted),
+                    ),
                 ],
               ),
             ),
