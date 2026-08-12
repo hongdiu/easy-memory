@@ -18,10 +18,10 @@ void main() {
 
   group('IOFilesystemScanner', () {
     test('finds files matching regex pattern', () async {
-      // Create test files
-      File('${tempDir.path}/001_hello.txt').createSync();
-      File('${tempDir.path}/002_world.txt').createSync();
-      File('${tempDir.path}/readme.md').createSync();
+      // Create test files with content so fileSize > 0
+      File('${tempDir.path}/001_hello.txt').writeAsStringSync('hello');
+      File('${tempDir.path}/002_world.txt').writeAsStringSync('world');
+      File('${tempDir.path}/readme.md').writeAsStringSync('readme');
 
       final scanner = IOFilesystemScanner();
       final results = await scanner.scanDirectory(tempDir.path, r'(\d{3})_.*\.txt');

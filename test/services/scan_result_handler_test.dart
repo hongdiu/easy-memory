@@ -98,10 +98,10 @@ void main() {
         updatedAt: DateTime.now().toIso8601String(),
       ));
 
-      // Create test files
-      File('${tempDir.path}/001_hello.txt').createSync();
-      File('${tempDir.path}/002_world.txt').createSync();
-      File('${tempDir.path}/readme.md').createSync();
+      // Create test files with content so fileSize > 0
+      File('${tempDir.path}/001_hello.txt').writeAsStringSync('hello');
+      File('${tempDir.path}/002_world.txt').writeAsStringSync('world');
+      File('${tempDir.path}/readme.md').writeAsStringSync('readme');
 
       final result = await handler.processScanResult(
         ruleId,
