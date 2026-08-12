@@ -191,5 +191,155 @@ directory TEXT NOT NULL,
         client.close();
       }
     });
+
+    test('GET /api/health returns status and platform', () async {
+      await server.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(
+          Uri.parse('http://127.0.0.1:${server.port}/api/health'),
+        );
+        final response = await request.close();
+        expect(response.statusCode, 200);
+        final body = await response.transform(utf8.decoder).join();
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        expect(data['status'], 'ok');
+        expect(data['platform'], isNotEmpty);
+        expect(data['timestamp'], isNotEmpty);
+      } finally {
+        client.close();
+      }
+    });
+
+    test('POST /api/delete deletes an existing file', () async {
+      await server.start(port: 0);
+      final tmpFile = File('${Directory.systemTemp.path}/em_delete_test_'
+          '${DateTime.now().millisecondsSinceEpoch}.tmp');
+      await tmpFile.writeAsString('delete me');
+      final client = HttpClient();
+      try {
+        final request = await client.postUrl(
+          Uri.parse('http://127.0.0.1:${server.port}/api/delete'),
+        );
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode({'path': tmpFile.path}));
+        final response = await request.close();
+        expect(response.statusCode, 200);
+        final body = await response.transform(utf8.decoder).join();
+        expect(jsonDecode(body)['success'], true);
+        expect(await tmpFile.exists(), false);
+      } finally {
+        client.close();
+        if (await tmpFile.exists()) await tmpFile.delete();
+      }
+    });
+
+    test('POST /api/delete returns 404 for missing file', () async {
+      await server.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.postUrl(
+          Uri.parse('http://127.0.0.1:${server.port}/api/delete'),
+        );
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode({'path': '/nonexistent/definitely_missing.tmp'}));
+        final response = await request.close();
+        expect(response.statusCode, 404);
+        final body = await response.transform(utf8.decoder).join();
+        expect(jsonDecode(body)['success'], false);
+      } finally {
+        client.close();
+      }
+    });
+
+    test('POST /api/delete returns 400 for missing path', () async {
+      await server.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.postUrl(
+          Uri.parse('http://127.0.0.1:${server.port}/api/delete'),
+        );
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode({}));
+        final response = await request.close();
+        expect(response.statusCode, 400);
+        final body = await response.transform(utf8.decoder).join();
+        expect(jsonDecode(body)['success'], false);
+      } finally {
+        client.close();
+      }
+    });
+  });
+
+  group('WebServerService auth', () {
+    late WebServerService secured;
+
+    setUp(() async {
+      secured = WebServerService(apiKey: 'secret-key');
+    });
+
+    tearDown(() async {
+      await secured.stop();
+    });
+
+    test('rejects request without API key', () async {
+      await secured.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(
+          Uri.parse('http://127.0.0.1:${secured.port}/api/health'),
+        );
+        final response = await request.close();
+        expect(response.statusCode, 401);
+      } finally {
+        client.close();
+      }
+    });
+
+    test('rejects request with wrong API key', () async {
+      await secured.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(
+          Uri.parse('http://127.0.0.1:${secured.port}/api/health'),
+        );
+        request.headers.set('x-api-key', 'wrong-key');
+        final response = await request.close();
+        expect(response.statusCode, 401);
+      } finally {
+        client.close();
+      }
+    });
+
+    test('accepts request with correct API key', () async {
+      await secured.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(
+          Uri.parse('http://127.0.0.1:${secured.port}/api/health'),
+        );
+        request.headers.set('x-api-key', 'secret-key');
+        final response = await request.close();
+        expect(response.statusCode, 200);
+        final body = await response.transform(utf8.decoder).join();
+        expect(jsonDecode(body)['status'], 'ok');
+      } finally {
+        client.close();
+      }
+    });
+
+    test('root page is accessible without API key', () async {
+      await secured.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(
+          Uri.parse('http://127.0.0.1:${secured.port}/'),
+        );
+        final response = await request.close();
+        expect(response.statusCode, 200);
+      } finally {
+        client.close();
+      }
+    });
   });
 }

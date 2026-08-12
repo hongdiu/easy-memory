@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:saf/saf.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
@@ -13,6 +14,7 @@ class WebServerService {
   final RuleRepository _ruleRepo = RuleRepository();
   final MatchItemRepository _matchItemRepo = MatchItemRepository();
   final FileRecordRepository _fileRecordRepo = FileRecordRepository();
+  String _apiKey;
 
   HttpServer? _server;
   int _port = 8080;
@@ -20,18 +22,45 @@ class WebServerService {
   bool get isRunning => _server != null;
   int get port => _port;
 
-  /// Start the HTTP server on [port]. Returns the actual port bound.
-  Future<int> start({int port = 8080}) async {
+  WebServerService({String apiKey = ''}) : _apiKey = apiKey;
+
+  /// Auth middleware: checks X-Api-Key on /api/* routes.
+  shelf.Middleware get _authMiddleware {
+    return (innerHandler) {
+      return (request) async {
+        if (_apiKey.isNotEmpty && request.url.path.startsWith('api/')) {
+          final key = request.headers['x-api-key'];
+          if (key == null || key != _apiKey) {
+            return shelf.Response.unauthorized(
+              jsonEncode({'success': false, 'error': '未授权'}),
+            );
+          }
+        }
+        return innerHandler(request);
+      };
+    };
+  }
+
+  /// Start the HTTP server on [port] with an optional [apiKey].
+  /// Returns the actual port bound.
+  Future<int> start({int port = 8080, String apiKey = ''}) async {
     if (_server != null) throw StateError('Server already running');
+
+    // Use the provided apiKey, fall back to the constructor value.
+    final effectiveApiKey = apiKey.isNotEmpty ? apiKey : _apiKey;
+    _apiKey = effectiveApiKey;
 
     final router = Router();
 
     router.get('/', _serveIndex);
+    router.get('/api/health', _handleHealth);
     router.get('/api/query', _handleQuery);
     router.get('/api/rules', _handleRules);
+    router.post('/api/delete', _handleDelete);
 
-    final handler = const shelf.Pipeline()
+    final handler = shelf.Pipeline()
         .addMiddleware(shelf.logRequests())
+        .addMiddleware(_authMiddleware)
         .addHandler(router.call);
 
     _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
@@ -106,6 +135,66 @@ class WebServerService {
       jsonEncode(result),
       headers: {'content-type': 'application/json; charset=utf-8'},
     );
+  }
+
+  /// GET /api/health — return server status + platform info
+  Future<shelf.Response> _handleHealth(shelf.Request request) async {
+    final platform = Platform.isAndroid
+        ? 'android'
+        : Platform.isWindows
+            ? 'windows'
+            : Platform.isLinux
+                ? 'linux'
+                : Platform.isMacOS
+                    ? 'macos'
+                    : 'unknown';
+    return shelf.Response.ok(
+      jsonEncode({
+        'status': 'ok',
+        'platform': platform,
+        'timestamp': DateTime.now().toIso8601String(),
+      }),
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+
+  /// POST /api/delete — delete a file by path (filesystem path or SAF URI)
+  Future<shelf.Response> _handleDelete(shelf.Request request) async {
+    try {
+      final body = jsonDecode(await request.readAsString())
+          as Map<String, dynamic>;
+      final path = body['path'] as String?;
+      if (path == null || path.isEmpty) {
+        return shelf.Response(400,
+            body: jsonEncode({'success': false, 'error': '缺少 path 参数'}));
+      }
+
+      if (path.startsWith('content://')) {
+        // Android SAF URI — only supported on Android
+        if (!Platform.isAndroid) {
+          return shelf.Response(400,
+              body: jsonEncode({'success': false, 'error': 'SAF URI 仅支持 Android 端'}));
+        }
+        final saf = Saf();
+        await saf.delete(path);
+      } else {
+        // Filesystem path
+        final file = File(path);
+        if (!await file.exists()) {
+          return shelf.Response(404,
+              body: jsonEncode({'success': false, 'error': '文件不存在'}));
+        }
+        await file.delete();
+      }
+
+      return shelf.Response.ok(
+        jsonEncode({'success': true}),
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    } catch (e) {
+      return shelf.Response(500,
+          body: jsonEncode({'success': false, 'error': e.toString()}));
+    }
   }
 }
 
