@@ -166,7 +166,7 @@ void main() {
       fileSize: 1048576, // 1 MB
       scannedAt: '2024-01-01T00:00:00',
     );
-    final id = await repo.insert(record);
+    await repo.insert(record);
     final records = await repo.getByMatchItemId(matchItemId);
     expect(records.length, 1);
     expect(records.first.fileSize, 1048576);
