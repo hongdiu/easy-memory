@@ -126,7 +126,7 @@ class _GlobalQueryPageState extends State<GlobalQueryPage> {
       child: TextField(
         controller: _searchController,
         decoration: InputDecoration(
-          hintText: '输入匹配项值搜索（如 001@HAPPY）',
+          hintText: '输入匹配项搜索',
           prefixIcon: const Icon(Icons.search),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(

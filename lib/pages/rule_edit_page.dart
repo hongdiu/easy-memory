@@ -245,6 +245,34 @@ class _RuleEditPageState extends State<RuleEditPage> {
                 return null;
               },
             ),
+            const SizedBox(height: 8),
+            // Quick regex token buttons
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                '\\d', '{}', '\\w', '()', '\\s',
+              ].map((token) => OutlinedButton(
+                onPressed: () {
+                  final idx = _regexController.selection.baseOffset;
+                  final text = _regexController.text;
+                  if (idx >= 0 && idx <= text.length) {
+                    final newText = '${text.substring(0, idx)}$token${text.substring(idx)}';
+                    _regexController.text = newText;
+                    _regexController.selection = TextSelection.collapsed(offset: idx + token.length);
+                  } else {
+                    _regexController.text = text + token;
+                  }
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: Text(token, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+              )).toList(),
+            ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _formatController,
