@@ -89,7 +89,7 @@ class SyncService {
       final importedMatchItems =
           (data['match_items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
-      onProgress?.call(const SyncProgress(
+      onProgress?.call(SyncProgress(
         percent: 10,
         message: '下载规则 (${importedRules.length} 条)...',
       ));
@@ -171,7 +171,7 @@ class SyncService {
           endpoint, '$baseUrl/api/sync/records?offset=0&limit=1');
       final totalRecords = countResp['total'] as int? ?? 0;
 
-      onProgress?.call(const SyncProgress(
+      onProgress?.call(SyncProgress(
         percent: 25,
         message: '同步文件记录 (共 $totalRecords 条)...',
       ));
@@ -240,7 +240,7 @@ class SyncService {
       final summary =
           '同步完成: $rulesMerged 条规则, $matchItemsMerged 个匹配项, $fileRecordsMerged 条文件记录';
 
-      onProgress?.call(const SyncProgress(percent: 100, message: summary));
+      onProgress?.call(SyncProgress(percent: 100, message: summary));
 
       return SyncResult(
         success: true,
