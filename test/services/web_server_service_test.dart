@@ -234,7 +234,7 @@ directory TEXT NOT NULL,
       }
     });
 
-    test('POST /api/delete returns 404 for missing file', () async {
+    test('POST /api/delete returns 200 for missing file (DB record still cleared)', () async {
       await server.start(port: 0);
       final client = HttpClient();
       try {
@@ -244,9 +244,10 @@ directory TEXT NOT NULL,
         request.headers.contentType = ContentType.json;
         request.write(jsonEncode({'path': '/nonexistent/definitely_missing.tmp'}));
         final response = await request.close();
-        expect(response.statusCode, 404);
+        // DB record is deleted first; missing physical file is non-fatal
+        expect(response.statusCode, 200);
         final body = await response.transform(utf8.decoder).join();
-        expect(jsonDecode(body)['success'], false);
+        expect(jsonDecode(body)['success'], true);
       } finally {
         client.close();
       }

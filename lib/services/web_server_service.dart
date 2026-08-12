@@ -160,6 +160,12 @@ class WebServerService {
   }
 
   /// POST /api/delete — delete a file by path (filesystem path or SAF URI)
+  ///
+  /// Order matters: physical file is deleted **first**, DB record second.
+  /// If the file deletion fails, the DB record is left untouched (no
+  /// partial state, nothing to roll back — the delete is atomic per step).
+  /// If the physical file is already missing, the DB record is still
+  /// cleared so no ghost record remains.
   Future<shelf.Response> _handleDelete(shelf.Request request) async {
     try {
       final body = jsonDecode(await request.readAsString())
@@ -170,6 +176,7 @@ class WebServerService {
             body: jsonEncode({'success': false, 'error': '缺少 path 参数'}));
       }
 
+      // 1. Delete physical file first — failure throws, DB record stays
       if (path.startsWith('content://')) {
         // Android SAF URI — only supported on Android
         if (!Platform.isAndroid) {
@@ -181,14 +188,13 @@ class WebServerService {
       } else {
         // Filesystem path
         final file = File(path);
-        if (!await file.exists()) {
-          return shelf.Response(404,
-              body: jsonEncode({'success': false, 'error': '文件不存在'}));
+        if (await file.exists()) {
+          await file.delete();
         }
-        await file.delete();
+        // File already missing → skip physical delete, still clear DB below
       }
 
-      // 同步删除该路径对应的 file_record 记录，避免脏数据残留
+      // 2. Delete DB record — only reached if the file step didn't throw
       await _fileRecordRepo.deleteByFullPath(path);
 
       return shelf.Response.ok(
