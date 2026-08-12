@@ -44,6 +44,8 @@ class LocalDeleteService {
             await saf.delete(path);
           } on SafNotFoundException {
             // File already gone → DB record still cleared below
+          } on SafIoException {
+            // saf 将 FileNotFoundException 包装为 SafIoException
           }
         } else {
           return const LocalDeleteResult(

@@ -243,6 +243,9 @@ class WebServerService {
         } on SafNotFoundException {
           // File already gone → DB record still cleared below
           fileMissing = true;
+        } on SafIoException {
+          // saf 将 FileNotFoundException 包装为 SafIoException
+          fileMissing = true;
         }
       } else if (await File(path).exists()) {
         // Filesystem path
