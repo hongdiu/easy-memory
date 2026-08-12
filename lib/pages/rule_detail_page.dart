@@ -120,44 +120,6 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
         }
         return;
       }
-    } else {
-      // Android：检查目录是否为 SAF URI 格式（兼容旧版本存的文件系统路径）
-      if (!directory.startsWith('content://')) {
-        if (!mounted) return;
-        final reauth = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('需要重新授权'),
-            content: const Text(
-              '该规则的扫描目录是旧版本保存的文件路径，'
-              '请重新选择目录以使用 SAF 授权。',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('重新选择'),
-              ),
-            ],
-          ),
-        );
-        if (reauth != true || !mounted) return;
-
-        final safScanner = _scanner as SafFileScanner;
-        final newUri = await safScanner.pickDirectory();
-        if (newUri == null || !mounted) return;
-
-        // 持久化新 URI，下次直接扫
-        final now = DateTime.now().toIso8601String();
-        await _ruleRepo.update(widget.rule.copyWith(
-          scanDirectory: newUri,
-          updatedAt: now,
-        ));
-        directory = newUri;
-      }
     }
 
     setState(() => _scanning = true);
