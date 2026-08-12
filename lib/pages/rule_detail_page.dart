@@ -255,6 +255,14 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
     }
   }
 
+  /// Remote delete succeeded — clean up the local DB record and refresh.
+  Future<void> _onRemoteDeleted(FileRecord record) async {
+    if (record.id != null) {
+      await _fileRecordRepo.delete(record.id!);
+    }
+    await _loadData();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -430,8 +438,9 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
                 ),
                 const SizedBox(width: 4),
                 _RemoteDeleteButton(
-                  filePath: record.fullPath,
+                  file: record,
                   service: _remoteDeleteService,
+                  onDeleted: (deleted) => _onRemoteDeleted(deleted),
                 ),
                 const SizedBox(width: 4),
                 IconButton(
@@ -455,12 +464,14 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
 
 /// A small icon button that triggers the remote delete flow (cross-device).
 class _RemoteDeleteButton extends StatelessWidget {
-  final String filePath;
+  final FileRecord file;
   final RemoteDeleteService service;
+  final void Function(FileRecord deletedFile) onDeleted;
 
   const _RemoteDeleteButton({
-    required this.filePath,
+    required this.file,
     required this.service,
+    required this.onDeleted,
   });
 
   @override
@@ -514,7 +525,7 @@ class _RemoteDeleteButton extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('远程删除'),
-        content: Text('确定在「${endpoint.label}」(${endpoint.host}) 上删除此文件？\n\n$filePath'),
+        content: Text('确定在「${endpoint.label}」(${endpoint.host}) 上删除此文件？\n\n${file.fullPath}'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -534,7 +545,7 @@ class _RemoteDeleteButton extends StatelessWidget {
       const SnackBar(content: Text('正在删除...'), duration: Duration(seconds: 1)),
     );
 
-    final result = await service.deleteFile(endpoint: endpoint, filePath: filePath);
+    final result = await service.deleteFile(endpoint: endpoint, filePath: file.fullPath);
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -544,6 +555,10 @@ class _RemoteDeleteButton extends StatelessWidget {
         duration: const Duration(seconds: 3),
       ),
     );
+
+    if (result.success) {
+      onDeleted(file);
+    }
   }
 }
 

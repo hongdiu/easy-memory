@@ -213,7 +213,11 @@ class _GlobalQueryPageState extends State<GlobalQueryPage> {
       itemBuilder: (context, index) {
         return _SearchResultCard(
           result: _results[index],
-          onFileDeleted: (deletedFile) {
+          onFileDeleted: (deletedFile) async {
+            // Remove the local DB record so it doesn't reappear on next search
+            if (deletedFile.id != null) {
+              await _fileRepo.delete(deletedFile.id!);
+            }
             _results[index].files.remove(deletedFile);
             setState(() {});
           },
@@ -394,8 +398,9 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                   ),
                   const SizedBox(width: 8),
                   _RemoteDeleteButton(
-                    filePath: file.fullPath,
+                    file: file,
                     service: _remoteDeleteService,
+                    onDeleted: (deleted) => widget.onFileDeleted(deleted),
                   ),
                 ],
               ),
@@ -482,12 +487,14 @@ class _LocalDeleteButton extends StatelessWidget {
 
 /// A small icon button that triggers the remote delete flow.
 class _RemoteDeleteButton extends StatelessWidget {
-  final String filePath;
+  final FileRecord file;
   final RemoteDeleteService service;
+  final void Function(FileRecord deletedFile) onDeleted;
 
   const _RemoteDeleteButton({
-    required this.filePath,
+    required this.file,
     required this.service,
+    required this.onDeleted,
   });
 
   @override
@@ -541,7 +548,7 @@ class _RemoteDeleteButton extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('远程删除'),
-        content: Text('确定在「${endpoint.label}」(${endpoint.host}) 上删除此文件？\n\n$filePath'),
+        content: Text('确定在「${endpoint.label}」(${endpoint.host}) 上删除此文件？\n\n${file.fullPath}'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -561,7 +568,7 @@ class _RemoteDeleteButton extends StatelessWidget {
       const SnackBar(content: Text('正在删除...'), duration: Duration(seconds: 1)),
     );
 
-    final result = await service.deleteFile(endpoint: endpoint, filePath: filePath);
+    final result = await service.deleteFile(endpoint: endpoint, filePath: file.fullPath);
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -571,6 +578,11 @@ class _RemoteDeleteButton extends StatelessWidget {
         duration: const Duration(seconds: 3),
       ),
     );
+
+    if (result.success) {
+      // Delete local DB record so the list entry disappears
+      onDeleted(file);
+    }
   }
 }
 
