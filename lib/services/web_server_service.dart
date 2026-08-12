@@ -9,6 +9,9 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 import '../data/rule_repository.dart';
 import '../data/match_item_repository.dart';
 import '../data/file_record_repository.dart';
+import 'device_config.dart';
+import 'discovery_service.dart';
+import 'android_multicast_lock.dart';
 
 class WebServerService {
   final RuleRepository _ruleRepo = RuleRepository();
@@ -19,8 +22,15 @@ class WebServerService {
   HttpServer? _server;
   int _port = 8080;
 
+  String _localIp = '';
+  String _label = '';
+  DiscoverySession? _discoverySession;
+
   bool get isRunning => _server != null;
   int get port => _port;
+  String get localIp => _localIp;
+  bool get authRequired => _apiKey.isNotEmpty;
+  String get label => _label;
 
   // ignore: prefer_initializing_formals - `_apiKey` 非 final，start() 内可被覆盖
   WebServerService({String apiKey = ''}) : _apiKey = apiKey;
@@ -51,6 +61,13 @@ class WebServerService {
     final effectiveApiKey = apiKey.isNotEmpty ? apiKey : _apiKey;
     _apiKey = effectiveApiKey;
 
+    // Resolve local IP for discovery advertising.
+    _localIp = await _resolveLocalIp();
+
+    // Load device label from config.
+    final config = await DeviceConfig.load();
+    _label = config.label;
+
     final router = Router();
 
     router.get('/', _serveIndex);
@@ -68,12 +85,47 @@ class WebServerService {
 
     _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
     _port = _server!.port;
+
+    // Start UDP discovery listener (best-effort, non-blocking).
+    _discoverySession = await DiscoveryService.startListener(
+      label: _label,
+      host: _localIp,
+      port: _port,
+      authRequired: _apiKey.isNotEmpty,
+    );
+
+    // Android: acquire multicast lock so the discovery listener receives
+    // broadcast packets.
+    await AndroidMulticastLock.acquire();
+
     return _port;
   }
 
   Future<void> stop() async {
+    _discoverySession?.close();
+    _discoverySession = null;
+    await AndroidMulticastLock.release();
     await _server?.close(force: true);
     _server = null;
+    _localIp = '';
+    _label = '';
+  }
+
+  /// Resolve the first non-loopback IPv4 address of this device.
+  static Future<String> _resolveLocalIp() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      ).timeout(const Duration(seconds: 5));
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback) return addr.address;
+        }
+      }
+    } catch (_) {
+      // non-fatal, fall back to loopback
+    }
+    return '127.0.0.1';
   }
 
   /// GET / — serve the embedded Web query page
@@ -207,6 +259,8 @@ class WebServerService {
       jsonEncode({
         'status': 'ok',
         'platform': platform,
+        'label': _label,
+        'auth_required': _apiKey.isNotEmpty,
         'timestamp': DateTime.now().toIso8601String(),
       }),
       headers: {'content-type': 'application/json; charset=utf-8'},

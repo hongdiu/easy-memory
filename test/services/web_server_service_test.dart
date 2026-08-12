@@ -206,10 +206,29 @@ directory TEXT NOT NULL,
         expect(data['status'], 'ok');
         expect(data['platform'], isNotEmpty);
         expect(data['timestamp'], isNotEmpty);
+        expect(data['label'], isNotEmpty);
+        expect(data['auth_required'], isBool);
       } finally {
         client.close();
       }
     });
+
+    test('GET /api/health returns auth_required=true when apiKey set', () async {
+      await server.start(port: 0, apiKey: 'secret');
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(
+          Uri.parse('http://127.0.0.1:${server.port}/api/health'),
+        );
+        final response = await request.close();
+        expect(response.statusCode, 200);
+        final body = await response.transform(utf8.decoder).join();
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        expect(data['auth_required'], true);
+        expect(data['label'], isNotEmpty);
+      } finally {
+        client.close();
+      }
 
     test('POST /api/delete deletes an existing file', () async {
       await server.start(port: 0);

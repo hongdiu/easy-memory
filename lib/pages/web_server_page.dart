@@ -7,6 +7,7 @@ import '../models/remote_endpoint.dart';
 import '../services/web_server_service.dart';
 import '../services/sync_service.dart';
 import '../services/cleanup_service.dart';
+import '../services/discovery_service.dart';
 
 class WebServerPage extends StatefulWidget {
   const WebServerPage({super.key});
@@ -126,6 +127,112 @@ class _WebServerPageState extends State<WebServerPage> {
         _saveEndpoints();
       }
     });
+  }
+
+  /// Scan the LAN for easy_memory services, let the user pick which to add.
+  Future<void> _discoverLan() async {
+    final result = await showDialog<_DiscoveryResult>(
+      context: context,
+      builder: (dialogCtx) => _DiscoveryDialog(
+        existingEndpoints: _remoteEndpoints,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    final existingIds = {
+      for (final e in _remoteEndpoints) '${e.host}:${e.port}',
+    };
+    var added = 0;
+    setState(() {
+      for (final svc in result.services) {
+        final id = '${svc.host}:${svc.port}';
+        if (existingIds.contains(id)) continue;
+        existingIds.add(id);
+        _remoteEndpoints.add(RemoteEndpoint(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          label: svc.label.isEmpty ? svc.host : svc.label,
+          host: svc.host,
+          port: svc.port,
+          apiKey: result.tokens[svc.id] ?? '',
+        ));
+        added++;
+      }
+    });
+    if (added > 0) await _saveEndpoints();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          added > 0
+              ? '已添加 $added 个远程服务'
+              : '选中的服务已在配置中',
+        ),
+      ),
+    );
+  }
+
+  /// Sync data from all configured remote endpoints, one after another.
+  Future<void> _syncAll() async {
+    if (_remoteEndpoints.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先配置远程地址')),
+      );
+      return;
+    }
+
+    final results = <String, String>[];
+    for (var i = 0; i < _remoteEndpoints.length; i++) {
+      final endpoint = _remoteEndpoints[i];
+      final service = SyncService();
+      final progress = ValueNotifier<SyncProgress>(
+        SyncProgress(
+          percent: 0,
+          message: '(${i + 1}/${_remoteEndpoints.length}) 同步 ${endpoint.label}...',
+        ),
+      );
+
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) => _SyncProgressDialog(
+          endpoint: endpoint,
+          progress: progress,
+        ),
+      );
+
+      final result = await service.sync(
+        endpoint,
+        onProgress: (p) => progress.value = p,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      results.add('${endpoint.label}: ${result.success ? '✓ ' : '✗ '}${result.message}');
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text('同步结果 (${_remoteEndpoints.length} 个服务)'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: results.map((r) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(r, style: const TextStyle(fontSize: 13)),
+            )).toList(),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _editEndpoint(RemoteEndpoint endpoint) {
@@ -407,10 +514,36 @@ class _WebServerPageState extends State<WebServerPage> {
                                 onDelete: () => _removeEndpoint(e),
                               )),
                         const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: _addEndpoint,
-                          icon: const Icon(Icons.add),
-                          label: const Text('添加远程地址'),
+                        if (_remoteEndpoints.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _syncAll,
+                                icon: const Icon(Icons.sync, size: 18),
+                                label: const Text('同步全部'),
+                              ),
+                            ),
+                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _discoverLan,
+                                icon: const Icon(Icons.wifi_find),
+                                label: const Text('扫描局域网'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _addEndpoint,
+                                icon: const Icon(Icons.add),
+                                label: const Text('添加远程地址'),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -705,6 +838,362 @@ class _CleanupProgressDialog extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+/// Result returned by [_DiscoveryDialog] when the user confirms.
+class _DiscoveryResult {
+  final List<DiscoveredService> services;
+  final Map<String, String> tokens; // service id -> apiKey
+
+  const _DiscoveryResult({
+    required this.services,
+    required this.tokens,
+  });
+}
+
+/// Dialog that scans the LAN for easy_memory services, shows results
+/// with checkboxes, and lets the user select which ones to add.
+class _DiscoveryDialog extends StatefulWidget {
+  final List<RemoteEndpoint> existingEndpoints;
+
+  const _DiscoveryDialog({required this.existingEndpoints});
+
+  @override
+  State<_DiscoveryDialog> createState() => _DiscoveryDialogState();
+}
+
+class _DiscoveryDialogState extends State<_DiscoveryDialog> {
+  bool _scanning = true;
+  String? _error;
+  List<DiscoveredService> _services = [];
+  final Set<String> _selected = {};
+  final Map<String, String> _tokens = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _scan();
+  }
+
+  Future<void> _scan() async {
+    setState(() {
+      _scanning = true;
+      _error = null;
+    });
+    try {
+      final services = await DiscoveryService.discover();
+      if (!mounted) return;
+      setState(() {
+        _services = services;
+        _scanning = false;
+        // Auto-select all services that are not already configured.
+        final existingIds = {
+          for (final e in widget.existingEndpoints) '${e.host}:${e.port}',
+        };
+        for (final svc in services) {
+          if (!existingIds.contains(svc.id)) {
+            _selected.add(svc.id);
+          }
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '扫描失败: $e';
+        _scanning = false;
+      });
+    }
+  }
+
+  Future<void> _promptToken(DiscoveredService svc) async {
+    final key = await showDialog<String>(
+      context: context,
+      builder: (ctx) => _TokenInputDialog(service: svc),
+    );
+    if (key == null || !mounted) return;
+
+    // Verify the token against the service's health endpoint.
+    try {
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(Uri.parse('${svc.url}/api/health'));
+        if (key.isNotEmpty) {
+          request.headers.set('x-api-key', key);
+        }
+        final response = await request.close();
+        if (response.statusCode == 200) {
+          setState(() => _tokens[svc.id] = key);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('密钥验证通过')),
+          );
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('密钥验证失败，请重试')),
+          );
+        }
+      } finally {
+        client.close();
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法连接服务，请重试')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return AlertDialog(
+      title: const Text('扫描局域网'),
+      content: SizedBox(
+        width: 360,
+        child: _buildContent(theme),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _selected.isNotEmpty
+              ? () => Navigator.of(context).pop(_DiscoveryResult(
+                    services: _services.where((s) => _selected.contains(s.id)).toList(),
+                    tokens: _tokens,
+                  ))
+              : null,
+          child: Text('添加选中 (${_selected.length})'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContent(ThemeData theme) {
+    // Scanning state
+    if (_scanning) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('正在扫描局域网...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Error state
+    if (_error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
+              const SizedBox(height: 12),
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _scan,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Empty results
+    if (_services.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.wifi_off, size: 48, color: Colors.grey),
+              SizedBox(height: 12),
+              Text('未发现 easy_memory 服务'),
+              SizedBox(height: 4),
+              Text(
+                '请确保其他设备已启动 Web 服务',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Results list
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 360),
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              '发现 ${_services.length} 个服务',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ),
+          ..._services.map((svc) {
+            final isSelected = _selected.contains(svc.id);
+            final hasToken = _tokens.containsKey(svc.id);
+            final isExisting = widget.existingEndpoints.any(
+              (e) => e.host == svc.host && e.port == svc.port,
+            );
+
+            return CheckboxListTile(
+              dense: true,
+              value: isSelected,
+              enabled: !isExisting,
+              onChanged: (v) {
+                setState(() {
+                  if (v == true) {
+                    _selected.add(svc.id);
+                  } else {
+                    _selected.remove(svc.id);
+                  }
+                });
+              },
+              title: Row(
+                children: [
+                  Icon(
+                    _platformIcon(svc.platform),
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      svc.label.isNotEmpty ? svc.label : svc.host,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (isExisting)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text('已存在', style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
+                    ),
+                ],
+              ),
+              subtitle: Row(
+                children: [
+                  Text('${svc.host}:${svc.port}', style: const TextStyle(fontSize: 12)),
+                  if (svc.authRequired)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: GestureDetector(
+                        onTap: hasToken ? null : () => _promptToken(svc),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: hasToken ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            hasToken ? '🔑 已设密钥' : '🔒 需密钥',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: hasToken ? Colors.green[700] : Colors.orange[700],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  /// Map platform string to Material icon.
+  static IconData _platformIcon(String platform) {
+    switch (platform) {
+      case 'android':
+        return Icons.phone_android;
+      case 'windows':
+        return Icons.computer;
+      case 'linux':
+        return Icons.computer;
+      case 'macos':
+        return Icons.computer;
+      default:
+        return Icons.devices;
+    }
+  }
+}
+
+/// Dialog for entering a token (apiKey) for a discovered service.
+class _TokenInputDialog extends StatefulWidget {
+  final DiscoveredService service;
+
+  const _TokenInputDialog({required this.service});
+
+  @override
+  State<_TokenInputDialog> createState() => _TokenInputDialogState();
+}
+
+class _TokenInputDialogState extends State<_TokenInputDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('输入密钥 — ${widget.service.label}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${widget.service.host}:${widget.service.port} 需要访问密钥',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl,
+            decoration: const InputDecoration(
+              labelText: '访问密钥',
+              hintText: '输入对方服务设置的密钥',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            autofocus: true,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_ctrl.text.trim()),
+          child: const Text('确定'),
+        ),
+      ],
     );
   }
 }
