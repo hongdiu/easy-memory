@@ -43,8 +43,9 @@ void main() {
               match_item_id INTEGER NOT NULL,
               file_name TEXT NOT NULL,
               full_path TEXT NOT NULL,
-              directory TEXT NOT NULL,
-              scanned_at TEXT NOT NULL,
+directory TEXT NOT NULL,
+            file_size INTEGER,
+            scanned_at TEXT NOT NULL,
               FOREIGN KEY (match_item_id) REFERENCES match_items (id) ON DELETE CASCADE
             )
           ''');

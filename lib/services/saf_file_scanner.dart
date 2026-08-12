@@ -59,6 +59,7 @@ class SafFileScanner extends FileScanner {
             fileName: file.name,
             fullPath: file.uri,
             match: match,
+            fileSize: file.length,
           ));
         }
       }

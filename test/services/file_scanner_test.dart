@@ -35,6 +35,8 @@ void main() {
         } else {
           expect(r.match.group(1), '002');
         }
+        // fileSize should be present for real files
+        expect(r.fileSize, greaterThan(0));
       }
     });
 

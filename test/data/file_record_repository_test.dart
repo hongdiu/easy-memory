@@ -50,6 +50,7 @@ void main() {
               file_name TEXT NOT NULL,
               full_path TEXT NOT NULL,
               directory TEXT NOT NULL,
+              file_size INTEGER,
               scanned_at TEXT NOT NULL,
               FOREIGN KEY (match_item_id) REFERENCES match_items (id) ON DELETE CASCADE
             )
@@ -139,5 +140,35 @@ void main() {
     expect(restored.fileName, record.fileName);
     expect(restored.fullPath, record.fullPath);
     expect(restored.directory, record.directory);
+    expect(restored.fileSize, record.fileSize);
+  });
+
+  test('fileSize is null for old data (backward compatibility)', () {
+    final map = <String, dynamic>{
+      'id': 1,
+      'match_item_id': 1,
+      'file_name': 'test.txt',
+      'full_path': '/tmp/test.txt',
+      'directory': '/tmp',
+      'scanned_at': '2024-01-01T00:00:00',
+    };
+    final record = FileRecord.fromMap(map);
+    expect(record.fileSize, isNull);
+  });
+
+  test('fileSize is persisted and retrieved correctly', () async {
+    final matchItemId = await insertTestMatchItem();
+    final record = FileRecord(
+      matchItemId: matchItemId,
+      fileName: 'test.txt',
+      fullPath: '/tmp/test.txt',
+      directory: '/tmp',
+      fileSize: 1048576, // 1 MB
+      scannedAt: '2024-01-01T00:00:00',
+    );
+    final id = await repo.insert(record);
+    final records = await repo.getByMatchItemId(matchItemId);
+    expect(records.length, 1);
+    expect(records.first.fileSize, 1048576);
   });
 }

@@ -54,6 +54,7 @@ void main() {
               file_name TEXT NOT NULL,
               full_path TEXT NOT NULL,
               directory TEXT NOT NULL,
+              file_size INTEGER,
               scanned_at TEXT NOT NULL,
               FOREIGN KEY (match_item_id) REFERENCES match_items (id) ON DELETE CASCADE
             )
@@ -123,6 +124,7 @@ void main() {
         final records = await fileRecordRepo.getByMatchItemId(item.id!);
         expect(records.length, 1);
         expect(records[0].directory, tempDir.path);
+        expect(records[0].fileSize, greaterThan(0));
         if (item.matchValue == '001') {
           expect(records[0].fileName, '001_hello.txt');
         } else {

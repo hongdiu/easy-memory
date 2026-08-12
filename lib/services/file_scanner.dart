@@ -9,11 +9,13 @@ class FileScanResult {
   final String fileName;
   final String fullPath;
   final RegExpMatch match;
+  final int? fileSize;
 
   const FileScanResult({
     required this.fileName,
     required this.fullPath,
     required this.match,
+    this.fileSize,
   });
 }
 
@@ -91,6 +93,15 @@ class IOFilesystemScanner extends FileScanner {
     return results;
   }
 
+  /// Safely get file size in bytes, or null if unavailable.
+  static int? _safeLength(File file) {
+    try {
+      return file.lengthSync();
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _scanRecursive(
     Directory dir,
     RegExp regex,
@@ -120,6 +131,7 @@ class IOFilesystemScanner extends FileScanner {
             fileName: fileName,
             fullPath: entity.path,
             match: match,
+            fileSize: _safeLength(entity),
           ));
         }
       }

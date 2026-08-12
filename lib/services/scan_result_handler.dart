@@ -102,6 +102,7 @@ class ScanResultHandler {
         fileName: scanResult.fileName,
         fullPath: scanResult.fullPath,
         directory: directory,
+        fileSize: scanResult.fileSize,
         scannedAt: DateTime.now().toIso8601String(),
       ));
     }

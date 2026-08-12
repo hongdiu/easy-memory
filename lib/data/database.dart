@@ -49,8 +49,9 @@ class DatabaseHelper {
     return await _databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
       ),
     );
   }
@@ -89,6 +90,7 @@ class DatabaseHelper {
         file_name TEXT NOT NULL,
         full_path TEXT NOT NULL,
         directory TEXT NOT NULL,
+        file_size INTEGER,
         scanned_at TEXT NOT NULL,
         FOREIGN KEY (match_item_id) REFERENCES match_items (id) ON DELETE CASCADE
       )
@@ -97,5 +99,14 @@ class DatabaseHelper {
     await db.execute('''
       CREATE INDEX idx_file_records_match_item_id ON file_records (match_item_id)
     ''');
+  }
+
+  /// Migrate older database schemas to the current version.
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    // v1 → v2: add file_size column to file_records (nullable for old data)
+    if (oldVersion < 2) {
+      await db.execute(
+          'ALTER TABLE file_records ADD COLUMN file_size INTEGER');
+    }
   }
 }

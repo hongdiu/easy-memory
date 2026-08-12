@@ -4,6 +4,7 @@ class FileRecord {
   final String fileName;
   final String fullPath;
   final String directory;
+  final int? fileSize;
   final String scannedAt;
 
   const FileRecord({
@@ -12,6 +13,7 @@ class FileRecord {
     required this.fileName,
     required this.fullPath,
     required this.directory,
+    this.fileSize,
     required this.scannedAt,
   });
 
@@ -22,6 +24,7 @@ class FileRecord {
       fileName: map['file_name'] as String,
       fullPath: map['full_path'] as String,
       directory: map['directory'] as String,
+      fileSize: map['file_size'] as int?,
       scannedAt: map['scanned_at'] as String,
     );
   }
@@ -33,6 +36,7 @@ class FileRecord {
       'file_name': fileName,
       'full_path': fullPath,
       'directory': directory,
+      'file_size': fileSize,
       'scanned_at': scannedAt,
     };
   }
@@ -43,6 +47,7 @@ class FileRecord {
     String? fileName,
     String? fullPath,
     String? directory,
+    int? fileSize,
     String? scannedAt,
   }) {
     return FileRecord(
@@ -51,6 +56,7 @@ class FileRecord {
       fileName: fileName ?? this.fileName,
       fullPath: fullPath ?? this.fullPath,
       directory: directory ?? this.directory,
+      fileSize: fileSize ?? this.fileSize,
       scannedAt: scannedAt ?? this.scannedAt,
     );
   }

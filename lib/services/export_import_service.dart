@@ -238,6 +238,7 @@ class ExportImportService {
         fileName: record.fileName,
         fullPath: record.fullPath,
         directory: record.directory,
+        fileSize: record.fileSize,
         scannedAt: record.scannedAt,
       ));
       fileCount++;
