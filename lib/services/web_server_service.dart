@@ -57,6 +57,8 @@ class WebServerService {
     router.get('/api/health', _handleHealth);
     router.get('/api/query', _handleQuery);
     router.get('/api/rules', _handleRules);
+    router.get('/api/sync/data', _handleSyncData);
+    router.get('/api/sync/records', _handleSyncRecords);
     router.post('/api/delete', _handleDelete);
 
     final handler = shelf.Pipeline()
@@ -134,6 +136,58 @@ class WebServerService {
 
     return shelf.Response.ok(
       jsonEncode(result),
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+
+  /// GET /api/sync/data — return all rules + match_items for sync.
+  /// Match items carry their rule_id FK, used by the client for natural-key
+  /// merge (rule_id + match_value). This endpoint is NOT paginated — rules
+  /// and match items are small enough to send in one shot.
+  Future<shelf.Response> _handleSyncData(shelf.Request request) async {
+    final rules = await _ruleRepo.getAll();
+    final rulesJson = rules.map((r) => r.toMap()).toList();
+
+    final List<Map<String, dynamic>> matchItemsJson = [];
+    for (final rule in rules) {
+      if (rule.id == null) continue;
+      final items = await _matchItemRepo.getByRuleId(rule.id!);
+      matchItemsJson.addAll(items.map((i) => i.toMap()));
+    }
+
+    final body = jsonEncode({
+      'rules': rulesJson,
+      'match_items': matchItemsJson,
+    });
+
+    return shelf.Response.ok(
+      body,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+
+  /// GET /api/sync/records?offset=0&limit=100 — paginated file records.
+  /// Returns the total count + the current page.
+  Future<shelf.Response> _handleSyncRecords(shelf.Request request) async {
+    final offset =
+        int.tryParse(request.url.queryParameters['offset'] ?? '') ?? 0;
+    final limit =
+        int.tryParse(request.url.queryParameters['limit'] ?? '') ?? 100;
+    final clampedLimit = limit.clamp(1, 500);
+
+    final total = await _fileRecordRepo.count();
+    final records = await _fileRecordRepo.getPage(offset, clampedLimit);
+    final recordsJson = records.map((r) => r.toMap()).toList();
+
+    final body = jsonEncode({
+      'total': total,
+      'offset': offset,
+      'limit': clampedLimit,
+      'records': recordsJson,
+    });
+
+    return shelf.Response.ok(
+      body,
       headers: {'content-type': 'application/json; charset=utf-8'},
     );
   }

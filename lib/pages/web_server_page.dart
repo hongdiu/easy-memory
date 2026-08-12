@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/remote_endpoint.dart';
 import '../services/web_server_service.dart';
+import '../services/sync_service.dart';
 
 class WebServerPage extends StatefulWidget {
   const WebServerPage({super.key});
@@ -146,6 +147,48 @@ class _WebServerPageState extends State<WebServerPage> {
   void _removeEndpoint(RemoteEndpoint endpoint) {
     setState(() => _remoteEndpoints.removeWhere((e) => e.id == endpoint.id));
     _saveEndpoints();
+  }
+
+  /// Start a sync from [endpoint] and show the progress dialog.
+  Future<void> _startSync(RemoteEndpoint endpoint) async {
+    final service = SyncService();
+    final progress = ValueNotifier<SyncProgress>(
+      const SyncProgress(percent: 0, message: '准备同步...'),
+    );
+
+    // Show the progress dialog (non-blocking, updates via ValueNotifier)
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => _SyncProgressDialog(
+        endpoint: endpoint,
+        progress: progress,
+      ),
+    );
+
+    // Run sync in the background
+    final result = await service.sync(
+      endpoint,
+      onProgress: (p) => progress.value = p,
+    );
+
+    // Close the dialog and report the result
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text(result.success ? '同步完成' : '同步失败'),
+        content: Text(result.message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -297,6 +340,7 @@ class _WebServerPageState extends State<WebServerPage> {
                         else
                           ..._remoteEndpoints.map((e) => _EndpointTile(
                                 endpoint: e,
+                                onSync: () => _startSync(e),
                                 onEdit: () => _editEndpoint(e),
                                 onDelete: () => _removeEndpoint(e),
                               )),
@@ -322,11 +366,13 @@ class _EndpointTile extends StatelessWidget {
   final RemoteEndpoint endpoint;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onSync;
 
   const _EndpointTile({
     required this.endpoint,
     required this.onEdit,
     required this.onDelete,
+    required this.onSync,
   });
 
   @override
@@ -344,6 +390,12 @@ class _EndpointTile extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            IconButton(
+              icon: const Icon(Icons.sync, size: 20),
+              color: Colors.blue,
+              tooltip: '同步数据',
+              onPressed: onSync,
+            ),
             IconButton(
               icon: const Icon(Icons.edit, size: 20),
               onPressed: onEdit,
@@ -487,6 +539,52 @@ class _EndpointDialogState extends State<_EndpointDialog> {
         ),
         FilledButton(onPressed: _save, child: const Text('保存')),
       ],
+    );
+  }
+}
+
+/// Sync progress dialog shown during data synchronization.
+class _SyncProgressDialog extends StatelessWidget {
+  final RemoteEndpoint endpoint;
+  final ValueNotifier<SyncProgress> progress;
+
+  const _SyncProgressDialog({
+    required this.endpoint,
+    required this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('同步数据 — ${endpoint.label}'),
+      content: SizedBox(
+        width: 320,
+        child: ValueListenableBuilder<SyncProgress>(
+          valueListenable: progress,
+          builder: (context, p, _) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(value: p.percent / 100.0),
+                const SizedBox(height: 16),
+                Text(
+                  '${p.percent}%',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  p.message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }

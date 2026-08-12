@@ -58,4 +58,23 @@ class FileRecordRepository {
       whereArgs: [fullPath],
     );
   }
+
+  /// Total number of file records. Used by sync progress calculation.
+  Future<int> count() async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery('SELECT COUNT(*) AS c FROM file_records');
+    return (result.first['c'] as int?) ?? 0;
+  }
+
+  /// Fetch a page of file records for batch sync.
+  Future<List<FileRecord>> getPage(int offset, int limit) async {
+    final db = await _dbHelper.database;
+    final maps = await db.query(
+      'file_records',
+      orderBy: 'id ASC',
+      limit: limit,
+      offset: offset,
+    );
+    return maps.map((m) => FileRecord.fromMap(m)).toList();
+  }
 }
