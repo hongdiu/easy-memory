@@ -22,6 +22,7 @@ class WebServerService {
   bool get isRunning => _server != null;
   int get port => _port;
 
+  // ignore: prefer_initializing_formals - `_apiKey` 非 final，start() 内可被覆盖
   WebServerService({String apiKey = ''}) : _apiKey = apiKey;
 
   /// Auth middleware: checks X-Api-Key on /api/* routes.
