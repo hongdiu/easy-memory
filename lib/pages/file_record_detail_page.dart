@@ -34,7 +34,7 @@ class FileRecordDetailPage extends StatelessWidget {
                   const SizedBox(height: 16),
                   _buildRow(theme, Icons.insert_drive_file, '文件名', record.fileName),
                   const Divider(height: 20),
-                  _buildRow(theme, Icons.storage, '大小', _formatSize(record.fileSize)),
+                  _buildRow(theme, Icons.storage, '大小', record.formattedSize),
                   const Divider(height: 20),
                   _buildRow(theme, Icons.folder_outlined, '目录', record.directory),
                   const Divider(height: 20),
@@ -73,14 +73,5 @@ class FileRecordDetailPage extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  String _formatSize(int? bytes) {
-    if (bytes == null) return '未知';
-    if (bytes < 1024) return '1 KB';
-    final kb = bytes / 1024;
-    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
-    final mb = kb / 1024;
-    return '${mb.toStringAsFixed(2)} MB';
   }
 }

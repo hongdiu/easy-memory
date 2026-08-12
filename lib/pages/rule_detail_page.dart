@@ -13,6 +13,7 @@ import 'package:easy_memory/services/file_scanner.dart';
 import 'package:easy_memory/services/saf_file_scanner.dart';
 import 'package:easy_memory/services/scan_result_handler.dart';
 import 'package:easy_memory/services/permission_service.dart';
+import 'package:easy_memory/pages/file_record_detail_page.dart';
 
 class RuleDetailPage extends StatefulWidget {
   final Rule rule;
@@ -353,12 +354,24 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
         children: records.map((record) {
           return ListTile(
             dense: true,
+            leading: const Icon(Icons.insert_drive_file_outlined, size: 18),
             title: Text(record.fileName, style: const TextStyle(fontSize: 14)),
             subtitle: Text(
-              record.fullPath,
+              '${record.formattedSize}  ·  ${record.fullPath}',
               style: const TextStyle(fontSize: 11, color: Colors.grey),
               overflow: TextOverflow.ellipsis,
             ),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => FileRecordDetailPage(
+                    record: record,
+                    matchValue: item.matchValue,
+                    ruleName: widget.rule.name,
+                  ),
+                ),
+              );
+            },
             trailing: IconButton(
               icon: const Icon(Icons.copy, size: 16),
               tooltip: '复制路径',

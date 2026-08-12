@@ -9,6 +9,7 @@ import 'package:easy_memory/data/match_item_repository.dart';
 import 'package:easy_memory/data/file_record_repository.dart';
 import 'package:easy_memory/data/rule_repository.dart';
 import 'package:easy_memory/services/remote_delete_service.dart';
+import 'package:easy_memory/pages/file_record_detail_page.dart';
 
 class GlobalQueryPage extends StatefulWidget {
   const GlobalQueryPage({super.key});
@@ -324,11 +325,13 @@ class _SearchResultCardState extends State<_SearchResultCard> {
           final file = files[index];
           return InkWell(
             onTap: () {
-              Clipboard.setData(ClipboardData(text: file.fullPath));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('路径已复制到剪贴板'),
-                  duration: Duration(seconds: 2),
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => FileRecordDetailPage(
+                    record: file,
+                    matchValue: widget.result.matchItem.matchValue,
+                    ruleName: widget.result.ruleName,
+                  ),
                 ),
               );
             },
@@ -348,7 +351,7 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          file.fullPath,
+                          '${file.formattedSize}  ·  ${file.fullPath}',
                           style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -356,8 +359,22 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                       ],
                     ),
                   ),
-                  Icon(Icons.copy_rounded, size: 16, color: Colors.grey[400]),
-                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: Icon(Icons.copy_rounded, size: 16, color: Colors.grey[400]),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: '复制路径',
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: file.fullPath));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('路径已复制到剪贴板'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
                   _RemoteDeleteButton(
                     filePath: file.fullPath,
                     service: _remoteDeleteService,

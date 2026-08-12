@@ -17,6 +17,17 @@ class FileRecord {
     required this.scannedAt,
   });
 
+  /// Human-readable file size, e.g. "1.5 MB". Returns "未知" when null.
+  String get formattedSize {
+    final bytes = fileSize;
+    if (bytes == null) return '未知';
+    if (bytes < 1024) return '1 KB';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(2)} MB';
+  }
+
   factory FileRecord.fromMap(Map<String, dynamic> map) {
     return FileRecord(
       id: map['id'] as int?,
