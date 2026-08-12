@@ -215,11 +215,10 @@ class WebServerService {
 
   /// POST /api/delete — delete a file by path (filesystem path or SAF URI)
   ///
-  /// Order matters: physical file is deleted **first**, DB record second.
-  /// If the file deletion fails, the DB record is left untouched (no
-  /// partial state, nothing to roll back — the delete is atomic per step).
-  /// If the physical file is already missing, the DB record is still
-  /// cleared so no ghost record remains.
+  /// The DB record is **always** removed, even if the physical file is
+  /// already missing or its deletion fails — the goal is to keep the DB
+  /// free of ghost records. A warning is returned when the physical file
+  /// was already missing.
   Future<shelf.Response> _handleDelete(shelf.Request request) async {
     try {
       final body = jsonDecode(await request.readAsString())
@@ -230,7 +229,8 @@ class WebServerService {
             body: jsonEncode({'success': false, 'error': '缺少 path 参数'}));
       }
 
-      // 1. Delete physical file first — failure throws, DB record stays
+      // 1. Delete physical file (best-effort — missing file is not an error)
+      var fileMissing = false;
       if (path.startsWith('content://')) {
         // Android SAF URI — only supported on Android
         if (!Platform.isAndroid) {
@@ -238,22 +238,28 @@ class WebServerService {
               body: jsonEncode({'success': false, 'error': 'SAF URI 仅支持 Android 端'}));
         }
         final saf = Saf();
-        await saf.delete(path);
-      } else {
-        // Filesystem path
-        final file = File(path);
-        if (await file.exists()) {
-          await file.delete();
+        try {
+          await saf.delete(path);
+        } catch (_) {
+          // File already gone or deletion failed — DB record still cleared
+          fileMissing = true;
         }
+      } else if (await File(path).exists()) {
+        // Filesystem path
+        await File(path).delete();
+      } else {
         // File already missing → skip physical delete, still clear DB below
+        fileMissing = true;
       }
 
-      // 2. Delete DB record — only reached if the file step didn't throw
+      // 2. Delete DB record — always
       final deletedRows = await _fileRecordRepo.deleteByFullPath(path);
       final response = {'success': true};
       if (deletedRows == 0) {
         response['warning'] =
             '物理文件已删除，但未找到匹配的 DB 记录 (full_path 不一致)';
+      } else if (fileMissing) {
+        response['warning'] = '文件已不存在，已清理对应 DB 记录';
       }
 
       return shelf.Response.ok(
