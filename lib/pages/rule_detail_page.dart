@@ -13,6 +13,7 @@ import 'package:easy_memory/services/file_scanner.dart';
 import 'package:easy_memory/services/saf_file_scanner.dart';
 import 'package:easy_memory/services/scan_result_handler.dart';
 import 'package:easy_memory/services/permission_service.dart';
+import 'package:easy_memory/services/local_delete_service.dart';
 import 'package:easy_memory/pages/file_record_detail_page.dart';
 
 class RuleDetailPage extends StatefulWidget {
@@ -34,6 +35,8 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
   Map<int, List<FileRecord>> _fileRecords = {};
   bool _loading = true;
   bool _scanning = false;
+
+  final LocalDeleteService _localDeleteService = LocalDeleteService();
 
   @override
   void initState() {
@@ -213,6 +216,42 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
     }
   }
 
+  Future<void> _confirmLocalDelete(BuildContext context, FileRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除文件'),
+        content: Text('确定删除此文件？\n\n${record.fullPath}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final result = await _localDeleteService.delete(record);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: result.success ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    if (result.success) {
+      await _loadData();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -372,15 +411,32 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
                 ),
               );
             },
-            trailing: IconButton(
-              icon: const Icon(Icons.copy, size: 16),
-              tooltip: '复制路径',
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: record.fullPath));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('路径已复制'), duration: Duration(seconds: 1)),
-                );
-              },
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Tooltip(
+                  message: '删除文件',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _confirmLocalDelete(context, record),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(Icons.delete_outline, size: 16, color: Colors.red[300]),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 16),
+                  tooltip: '复制路径',
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: record.fullPath));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('路径已复制'), duration: Duration(seconds: 1)),
+                    );
+                  },
+                ),
+              ],
             ),
           );
         }).toList(),

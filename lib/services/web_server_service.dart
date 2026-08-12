@@ -188,6 +188,9 @@ class WebServerService {
         await file.delete();
       }
 
+      // 同步删除该路径对应的 file_record 记录，避免脏数据残留
+      await _fileRecordRepo.deleteByFullPath(path);
+
       return shelf.Response.ok(
         jsonEncode({'success': true}),
         headers: {'content-type': 'application/json; charset=utf-8'},

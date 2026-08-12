@@ -47,4 +47,15 @@ class FileRecordRepository {
       whereArgs: [matchItemId],
     );
   }
+
+  /// Delete all file records with [fullPath]. Returns the number deleted.
+  /// Used by the local/remote delete flow to keep the DB in sync.
+  Future<int> deleteByFullPath(String fullPath) async {
+    final db = await _dbHelper.database;
+    return await db.delete(
+      'file_records',
+      where: 'full_path = ?',
+      whereArgs: [fullPath],
+    );
+  }
 }

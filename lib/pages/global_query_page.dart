@@ -9,6 +9,7 @@ import 'package:easy_memory/data/match_item_repository.dart';
 import 'package:easy_memory/data/file_record_repository.dart';
 import 'package:easy_memory/data/rule_repository.dart';
 import 'package:easy_memory/services/remote_delete_service.dart';
+import 'package:easy_memory/services/local_delete_service.dart';
 import 'package:easy_memory/pages/file_record_detail_page.dart';
 
 class GlobalQueryPage extends StatefulWidget {
@@ -210,7 +211,13 @@ class _GlobalQueryPageState extends State<GlobalQueryPage> {
       padding: const EdgeInsets.all(12),
       itemCount: _results.length,
       itemBuilder: (context, index) {
-        return _SearchResultCard(result: _results[index]);
+        return _SearchResultCard(
+          result: _results[index],
+          onFileDeleted: (deletedFile) {
+            _results[index].files.remove(deletedFile);
+            setState(() {});
+          },
+        );
       },
     );
   }
@@ -230,8 +237,12 @@ class _SearchResult {
 
 class _SearchResultCard extends StatefulWidget {
   final _SearchResult result;
+  final void Function(FileRecord deletedFile) onFileDeleted;
 
-  const _SearchResultCard({required this.result});
+  const _SearchResultCard({
+    required this.result,
+    required this.onFileDeleted,
+  });
 
   @override
   State<_SearchResultCard> createState() => _SearchResultCardState();
@@ -239,6 +250,7 @@ class _SearchResultCard extends StatefulWidget {
 
 class _SearchResultCardState extends State<_SearchResultCard> {
   final RemoteDeleteService _remoteDeleteService = RemoteDeleteService();
+  final LocalDeleteService _localDeleteService = LocalDeleteService();
   bool _expanded = false;
 
   @override
@@ -375,6 +387,12 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                     },
                   ),
                   const SizedBox(width: 8),
+                  _LocalDeleteButton(
+                    file: file,
+                    service: _localDeleteService,
+                    onDeleted: (deleted) => widget.onFileDeleted(deleted),
+                  ),
+                  const SizedBox(width: 8),
                   _RemoteDeleteButton(
                     filePath: file.fullPath,
                     service: _remoteDeleteService,
@@ -386,6 +404,79 @@ class _SearchResultCardState extends State<_SearchResultCard> {
         },
       ),
     );
+  }
+}
+
+/// A small icon button that triggers the **local** delete flow.
+/// Deletes the physical file on this device + its DB record, no remote
+/// endpoint configuration needed.
+class _LocalDeleteButton extends StatelessWidget {
+  final FileRecord file;
+  final LocalDeleteService service;
+  final void Function(FileRecord deletedFile) onDeleted;
+
+  const _LocalDeleteButton({
+    required this.file,
+    required this.service,
+    required this.onDeleted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '删除文件',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _onTap(context),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(Icons.delete_outline, size: 16, color: Colors.red[300]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onTap(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除文件'),
+        content: Text('确定删除此文件？\n\n${file.fullPath}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final result = await service.delete(file);
+    if (!context.mounted) return;
+
+    if (result.success) {
+      onDeleted(file);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('删除成功'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 }
 
