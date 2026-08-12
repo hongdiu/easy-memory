@@ -9,6 +9,7 @@ import 'package:easy_memory/models/match_item.dart';
 import 'package:easy_memory/models/file_record.dart';
 import 'package:easy_memory/data/match_item_repository.dart';
 import 'package:easy_memory/data/file_record_repository.dart';
+import 'package:easy_memory/data/rule_repository.dart';
 import 'package:easy_memory/services/file_scanner.dart';
 import 'package:easy_memory/services/saf_file_scanner.dart';
 import 'package:easy_memory/services/scan_result_handler.dart';
@@ -26,6 +27,7 @@ class RuleDetailPage extends StatefulWidget {
 class _RuleDetailPageState extends State<RuleDetailPage> {
   final MatchItemRepository _matchItemRepo = MatchItemRepository();
   final FileRecordRepository _fileRecordRepo = FileRecordRepository();
+  final RuleRepository _ruleRepo = RuleRepository();
   late final FileScanner _scanner;
   late final ScanResultHandler _scanHandler;
 
@@ -85,8 +87,10 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
       return;
     }
 
-    // Android 使用 SAF，无需 MANAGE_EXTERNAL_STORAGE 权限
+    String directory = widget.rule.scanDirectory!;
+
     if (!_isAndroid) {
+      // 桌面：请求文件系统权限
       final granted = await PermissionService.requestStorage();
       if (!granted) {
         if (mounted) {
@@ -116,13 +120,51 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
         }
         return;
       }
+    } else {
+      // Android：检查 SAF 授权是否仍然有效
+      final safScanner = _scanner as SafFileScanner;
+      final granted = await safScanner.isGranted(directory);
+      if (!granted) {
+        if (!mounted) return;
+        final reauth = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('授权已过期'),
+            content: const Text(
+              '扫描目录的访问授权已过期，请重新选择该目录以恢复授权。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('重新选择'),
+              ),
+            ],
+          ),
+        );
+        if (reauth != true || !mounted) return;
+
+        final newUri = await safScanner.pickDirectory();
+        if (newUri == null || !mounted) return;
+
+        // 持久化新 URI，下次重新扫描无需再次授权
+        final now = DateTime.now().toIso8601String();
+        await _ruleRepo.update(widget.rule.copyWith(
+          scanDirectory: newUri,
+          updatedAt: now,
+        ));
+        directory = newUri;
+      }
     }
 
     setState(() => _scanning = true);
     try {
       await _scanHandler.processScanResult(
         widget.rule.id!,
-        widget.rule.scanDirectory!,
+        directory,
         widget.rule.regexPattern,
         widget.rule.formatString,
       );
