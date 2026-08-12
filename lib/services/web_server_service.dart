@@ -249,10 +249,15 @@ class WebServerService {
       }
 
       // 2. Delete DB record — only reached if the file step didn't throw
-      await _fileRecordRepo.deleteByFullPath(path);
+      final deletedRows = await _fileRecordRepo.deleteByFullPath(path);
+      final response = {'success': true};
+      if (deletedRows == 0) {
+        response['warning'] =
+            '物理文件已删除，但未找到匹配的 DB 记录 (full_path 不一致)';
+      }
 
       return shelf.Response.ok(
-        jsonEncode({'success': true}),
+        jsonEncode(response),
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     } catch (e) {

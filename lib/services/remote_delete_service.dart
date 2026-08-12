@@ -9,11 +9,13 @@ import '../models/remote_endpoint.dart';
 class RemoteDeleteResult {
   final bool success;
   final String message;
+  final String? warning;
   final int? statusCode;
 
   const RemoteDeleteResult({
     required this.success,
     required this.message,
+    this.warning,
     this.statusCode,
   });
 }
@@ -61,6 +63,7 @@ class RemoteDeleteService {
           return RemoteDeleteResult(
             success: true,
             message: '删除成功',
+            warning: data['warning'] as String?,
             statusCode: response.statusCode,
           );
         }

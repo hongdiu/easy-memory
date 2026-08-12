@@ -573,9 +573,13 @@ class _RemoteDeleteButton extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(result.success ? '删除成功' : '删除失败: ${result.message}'),
-        backgroundColor: result.success ? Colors.green : Colors.red,
-        duration: const Duration(seconds: 3),
+        content: Text(result.success
+            ? '删除成功${result.warning != null ? '（${result.warning}）' : ''}'
+            : '删除失败: ${result.message}'),
+        backgroundColor: result.success
+            ? (result.warning != null ? Colors.orange : Colors.green)
+            : Colors.red,
+        duration: const Duration(seconds: 5),
       ),
     );
 
