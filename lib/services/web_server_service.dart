@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:saf/saf.dart';
 import 'package:easy_memory/services/discovery_logger.dart';
 import 'package:shelf/shelf.dart' as shelf;
