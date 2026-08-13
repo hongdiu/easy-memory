@@ -51,19 +51,97 @@ class _WebServerPageState extends State<WebServerPage> {
     if (mounted) _labelCtrl.text = config.label;
   }
 
-  Future<void> _saveDeviceLabel() async {
-    final label = _labelCtrl.text.trim();
-    if (label.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('设备名称不能为空')),
-      );
+  /// 弹出紧凑的「服务设置」弹窗（设备名/端口/密钥），确认后启动服务。
+  /// 未运行时点击启动按钮触发；运行时点击则直接停止。
+  Future<void> _toggleServer() async {
+    if (_running) {
+      await _service.stop();
+      setState(() {
+        _running = false;
+        _statusMsg = '服务已停止';
+      });
       return;
     }
-    await _service.updateLabel(label);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('设备名称已保存：$label')),
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('服务设置'),
+        content: SizedBox(
+          width: 320,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _labelCtrl,
+                decoration: const InputDecoration(
+                  labelText: '设备名称',
+                  hintText: '其他端扫描到时显示的名称',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _portCtrl,
+                decoration: const InputDecoration(
+                  labelText: '端口号',
+                  hintText: '8080',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _apiKeyCtrl,
+                decoration: const InputDecoration(
+                  labelText: '访问密钥 (可选)',
+                  hintText: '留空则不要求密钥',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('启动'),
+          ),
+        ],
+      ),
     );
+    if (confirmed != true || !mounted) return;
+
+    final port = int.tryParse(_portCtrl.text);
+    if (port == null || port < 1024 || port > 65535) {
+      setState(() => _statusMsg = '端口号须为 1024-65535');
+      return;
+    }
+    // 设备名非空时先持久化（服务未运行 updateLabel 只保存配置，
+    // start() 内部会重新 load 生效）。
+    if (_labelCtrl.text.trim().isNotEmpty) {
+      await _service.updateLabel(_labelCtrl.text.trim());
+    }
+    try {
+      await _service.start(port: port, apiKey: _apiKeyCtrl.text.trim());
+      setState(() {
+        _running = true;
+        _statusMsg = '服务已启动';
+      });
+    } catch (e) {
+      setState(() => _statusMsg = '启动失败: $e');
+    }
   }
 
   Future<void> _findLocalIp() async {
@@ -120,76 +198,116 @@ class _WebServerPageState extends State<WebServerPage> {
       context: pageContext,
       builder: (dialogCtx) => StatefulBuilder(
         builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('远程服务管理'),
-            content: SizedBox(
-              width: 360,
-              child: _loadingEndpoints
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: CircularProgressIndicator(),
-                      ),
-                    )
-                  : _remoteEndpoints.isEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(
-                            child: Text(
-                              '尚未配置远程地址',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                        )
-                      : SingleChildScrollView(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: _remoteEndpoints.map((e) => _EndpointTile(
-                                  endpoint: e,
-                                  onSync: () {
-                                    Navigator.of(dialogCtx).pop();
-                                    _startSync(e);
-                                  },
-                                  onEdit: () {
-                                    Navigator.of(dialogCtx).pop();
-                                    _editEndpoint(e);
-                                  },
-                                  onDelete: () {
-                                    _removeEndpoint(e);
-                                    setDialogState(() {});
-                                  },
-                                )).toList(),
-                          ),
-                        ),
-            ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.of(dialogCtx).pop(),
-                child: const Text('关闭'),
-              ),
-              if (_remoteEndpoints.isNotEmpty)
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(dialogCtx).pop();
-                    _syncAll();
-                  },
-                  child: const Text('同步全部'),
+          final content = <Widget>[
+            if (_loadingEndpoints)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ),
                 ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(dialogCtx).pop();
-                  _discoverLan();
-                },
-                icon: const Icon(Icons.wifi_find, size: 18),
-                label: const Text('扫描局域网'),
+              )
+            else if (_remoteEndpoints.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    '尚未配置远程地址',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                ),
+              )
+            else
+              ..._remoteEndpoints.map((e) => _EndpointTile(
+                    endpoint: e,
+                    onSync: () {
+                      Navigator.of(dialogCtx).pop();
+                      _startSync(e);
+                    },
+                    onEdit: () {
+                      Navigator.of(dialogCtx).pop();
+                      _editEndpoint(e);
+                    },
+                    onDelete: () {
+                      _removeEndpoint(e);
+                      setDialogState(() {});
+                    },
+                  )),
+          ];
+
+          return AlertDialog(
+            // 右上角关闭
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('远程服务管理', style: TextStyle(fontSize: 16)),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  tooltip: '关闭',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => Navigator.of(dialogCtx).pop(),
+                ),
+              ],
+            ),
+            contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            content: SizedBox(
+              width: 320,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: content,
+                ),
               ),
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.of(dialogCtx).pop();
-                  _addEndpoint();
-                },
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('添加'),
+            ),
+            actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            actions: <Widget>[
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 主操作一行两个：扫描局域网 + 添加
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(dialogCtx).pop();
+                            _discoverLan();
+                          },
+                          icon: const Icon(Icons.wifi_find, size: 16),
+                          label: const Text('扫描局域网'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            Navigator.of(dialogCtx).pop();
+                            _addEndpoint();
+                          },
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('添加'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 次要操作单独一行：同步全部（有端点时才显示）
+                  if (_remoteEndpoints.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Navigator.of(dialogCtx).pop();
+                          _syncAll();
+                        },
+                        icon: const Icon(Icons.sync, size: 16),
+                        label: const Text('同步全部'),
+                      ),
+                    ),
+                ],
               ),
             ],
           );
@@ -235,31 +353,6 @@ class _WebServerPageState extends State<WebServerPage> {
         ],
       ),
     );
-  }
-
-  Future<void> _toggleServer() async {
-    if (_running) {
-      await _service.stop();
-      setState(() {
-        _running = false;
-        _statusMsg = '服务已停止';
-      });
-    } else {
-      final port = int.tryParse(_portCtrl.text);
-      if (port == null || port < 1024 || port > 65535) {
-        setState(() => _statusMsg = '端口号须为 1024-65535');
-        return;
-      }
-      try {
-        await _service.start(port: port, apiKey: _apiKeyCtrl.text.trim());
-        setState(() {
-          _running = true;
-          _statusMsg = '服务已启动';
-        });
-      } catch (e) {
-        setState(() => _statusMsg = '启动失败: $e');
-      }
-    }
   }
 
   void _addEndpoint() {
@@ -566,87 +659,7 @@ class _WebServerPageState extends State<WebServerPage> {
           ),
           const SizedBox(height: 20),
 
-          // 2. One compact settings card (服务设置)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('服务设置', style: theme.textTheme.titleSmall),
-                  const SizedBox(height: 12),
-                  // Device name row
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.badge_outlined, size: 22),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _labelCtrl,
-                          decoration: const InputDecoration(
-                            labelText: '设备名称',
-                            hintText: '其他端扫描到时显示的名称',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: _saveDeviceLabel,
-                        child: const Text('保存'),
-                      ),
-                    ],
-                  ),
-                  if (!_running) ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _portCtrl,
-                      decoration: const InputDecoration(
-                        labelText: '端口号',
-                        hintText: '8080',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _apiKeyCtrl,
-                      decoration: const InputDecoration(
-                        labelText: '访问密钥 (可选)',
-                        hintText: '留空则不要求密钥',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
-                  ] else if (url != null) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Text('访问地址: ',
-                            style: TextStyle(fontSize: 16)),
-                        Expanded(
-                          child: SelectableText(
-                            url,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // 3. Remote services management card (prompt-based dialog)
+          // 2. Remote services management card (prompt-based dialog)
           Card(
             child: ListTile(
               leading: const Icon(Icons.dns),
@@ -660,7 +673,7 @@ class _WebServerPageState extends State<WebServerPage> {
           ),
           const SizedBox(height: 20),
 
-          // 4. Data cleanup (keep as-is)
+          // 3. Data cleanup (keep as-is)
           Card(
             child: ListTile(
               leading: const Icon(Icons.cleaning_services_outlined),
