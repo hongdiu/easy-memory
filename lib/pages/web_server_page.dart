@@ -10,6 +10,8 @@ import '../services/sync_service.dart';
 import '../services/cleanup_service.dart';
 import '../services/discovery_service.dart';
 import '../services/discovery_logger.dart';
+import '../services/data_change_notifier.dart';
+import '../data/database.dart';
 
 class WebServerPage extends StatefulWidget {
   const WebServerPage({super.key});
@@ -600,6 +602,89 @@ class _WebServerPageState extends State<WebServerPage> {
     );
   }
 
+  /// 清空应用内全部本地 DB 数据（规则/匹配项/文件记录）。
+  /// 双层确认避免误操作，成功后通知首页/查询页刷新。
+  Future<void> _wipeLocalData() async {
+    final first = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('清空本地数据'),
+        content: const Text(
+          '将删除本机数据库中的全部规则、匹配项和文件记录，且不可恢复。\n\n'
+          '确定继续吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('继续'),
+          ),
+        ],
+      ),
+    );
+    if (first != true || !mounted) return;
+
+    // 二次确认：提示需完全输入「清空」以防误触。
+    final textCtrl = TextEditingController();
+    final second = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('再次确认'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('请输入「清空」以确认删除全部本地数据'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: textCtrl,
+              decoration: const InputDecoration(
+                labelText: '输入 清空',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogCtx).pop(textCtrl.text.trim() == '清空'),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    textCtrl.dispose();
+    if (second != true || !mounted) return;
+
+    try {
+      await DatabaseHelper.instance.wipeAllData();
+      // 通知首页规则列表 / 查询页重新加载（空数据）。
+      DataChangeNotifier.instance.notifyDataChanged();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('本地数据已清空'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('清空失败: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -683,6 +768,24 @@ class _WebServerPageState extends State<WebServerPage> {
                 onPressed: _startCleanup,
                 icon: const Icon(Icons.cleaning_services, size: 18),
                 label: const Text('清理'),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // 4. Wipe local DB data (clears all rules / match items / records)
+          Card(
+            child: ListTile(
+              leading: Icon(Icons.delete_forever_outlined,
+                  color: theme.colorScheme.error),
+              title: const Text('清空本地数据'),
+              subtitle: const Text('删除全部规则、匹配项与文件记录 (不可恢复)'),
+              trailing: OutlinedButton(
+                onPressed: _wipeLocalData,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: theme.colorScheme.error,
+                ),
+                child: const Text('清空'),
               ),
             ),
           ),

@@ -43,6 +43,17 @@ class DatabaseHelper {
     }
   }
 
+  /// 清空全部业务数据（rules / match_items / file_records），
+  /// 表结构与索引保留。供「高级 → 清空本地数据」使用。
+  Future<void> wipeAllData() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('file_records');
+      await txn.delete('match_items');
+      await txn.delete('rules');
+    });
+  }
+
   Future<Database> _initDB(String filePath) async {
     final dir = await getApplicationDocumentsDirectory();
     final path = '${dir.path}/$filePath';

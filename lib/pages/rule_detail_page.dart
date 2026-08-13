@@ -9,6 +9,7 @@ import 'package:easy_memory/models/match_item.dart';
 import 'package:easy_memory/models/file_record.dart';
 import 'package:easy_memory/data/match_item_repository.dart';
 import 'package:easy_memory/data/file_record_repository.dart';
+import 'package:easy_memory/data/rule_repository.dart';
 import 'package:easy_memory/services/file_scanner.dart';
 import 'package:easy_memory/services/saf_file_scanner.dart';
 import 'package:easy_memory/services/scan_result_handler.dart';
@@ -30,8 +31,13 @@ class RuleDetailPage extends StatefulWidget {
 class _RuleDetailPageState extends State<RuleDetailPage> {
   final MatchItemRepository _matchItemRepo = MatchItemRepository();
   final FileRecordRepository _fileRecordRepo = FileRecordRepository();
+  final RuleRepository _ruleRepo = RuleRepository();
   late final FileScanner _scanner;
   late final ScanResultHandler _scanHandler;
+
+  /// 当前规则的可变副本：更换目录后（写回 DB）同步更新它，
+  /// 页面显示的目录立即反映最新值（_rule 是 immutable 的）。
+  late Rule _rule;
 
   List<MatchItem> _matchItems = [];
   Map<int, List<FileRecord>> _fileRecords = {};
@@ -59,6 +65,7 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
   @override
   void initState() {
     super.initState();
+    _rule = widget.rule;
     _scanner = createFileScanner();
     _scanHandler = ScanResultHandler(scanner: _scanner);
     _loadData();
@@ -67,7 +74,7 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
-      final items = await _matchItemRepo.getByRuleId(widget.rule.id!);
+      final items = await _matchItemRepo.getByRuleId(_rule.id!);
       // ponytail: sort alphabetically for consistent display
       items.sort((a, b) => a.matchValue.compareTo(b.matchValue));
 
@@ -100,7 +107,7 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
 
   Future<void> _rescan() async {
-    if (widget.rule.scanDirectory == null || widget.rule.scanDirectory!.isEmpty) {
+    if (_rule.scanDirectory == null || _rule.scanDirectory!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先设置扫描目录')),
       );
@@ -143,10 +150,10 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
     setState(() => _scanning = true);
     try {
       await _scanHandler.processScanResult(
-        widget.rule.id!,
-        widget.rule.scanDirectory!,
-        widget.rule.regexPattern,
-        widget.rule.formatString,
+        _rule.id!,
+        _rule.scanDirectory!,
+        _rule.regexPattern,
+        _rule.formatString,
       );
       await _loadData();
       if (mounted) {
@@ -209,13 +216,34 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
 
     if (directory == null || !mounted) return;
 
-    setState(() => _scanning = true);
+    // 更新当前规则的扫描目录（写回 DB + 同步页面显示）。
+    // 放在扫描之前，无论扫描成败目录都已更新，符合用户意图。
+    final updatedRule = _rule.copyWith(
+      scanDirectory: directory,
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+    try {
+      await _ruleRepo.update(updatedRule);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新规则目录失败: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _rule = updatedRule;
+      _scanning = true;
+    });
+
     try {
       await _scanHandler.processScanResult(
-        widget.rule.id!,
+        _rule.id!,
         directory,
-        widget.rule.regexPattern,
-        widget.rule.formatString,
+        _rule.regexPattern,
+        _rule.formatString,
       );
       await _loadData();
       if (mounted) {
@@ -282,7 +310,7 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.rule.name),
+        title: Text(_rule.name),
         backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: _loading
@@ -306,9 +334,9 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _infoRow(Icons.code, '正则', widget.rule.regexPattern),
+            _infoRow(Icons.code, '正则', _rule.regexPattern),
             const SizedBox(height: 6),
-            _infoRow(Icons.folder_outlined, '目录', widget.rule.scanDirectory ?? '未设置'),
+            _infoRow(Icons.folder_outlined, '目录', _rule.scanDirectory ?? '未设置'),
             const SizedBox(height: 6),
             _infoRow(Icons.layers, '匹配项', '${_matchItems.length} 个'),
           ],
@@ -432,7 +460,7 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
                   builder: (_) => FileRecordDetailPage(
                     record: record,
                     matchValue: item.matchValue,
-                    ruleName: widget.rule.name,
+                    ruleName: _rule.name,
                   ),
                 ),
               );

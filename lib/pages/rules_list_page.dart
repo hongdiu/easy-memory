@@ -156,12 +156,14 @@ class _RulesListPageState extends State<RulesListPage> {
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => RuleDetailPage(rule: rule)),
-            );
-          },
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => RuleDetailPage(rule: rule)),
+          );
+          // 详情页内可能更换目录/删除记录，返回后刷新列表。
+          if (mounted) await _loadRules();
+        },
         onLongPress: () => _deleteRule(rule),
         child: Padding(
           padding: const EdgeInsets.all(16),
