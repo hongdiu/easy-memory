@@ -907,12 +907,15 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
     }
   }
 
-  Future<void> _promptToken(DiscoveredService svc) async {
+  /// Prompt for and verify the service token. Returns true when a verified
+  /// token is stored for [svc]; false when the user cancelled or the token
+  /// did not verify.
+  Future<bool> _promptToken(DiscoveredService svc) async {
     final key = await showDialog<String>(
       context: context,
       builder: (ctx) => _TokenInputDialog(service: svc),
     );
-    if (key == null || !mounted) return;
+    if (key == null || !mounted) return false;
 
     // Verify the token against the service's health endpoint.
     try {
@@ -925,25 +928,59 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
         final response = await request.close();
         if (response.statusCode == 200) {
           setState(() => _tokens[svc.id] = key);
-          if (!mounted) return;
+          if (!mounted) return false;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('密钥验证通过')),
           );
+          return true;
         } else {
-          if (!mounted) return;
+          if (!mounted) return false;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('密钥验证失败，请重试')),
           );
+          return false;
         }
       } finally {
         client.close();
       }
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('无法连接服务，请重试')),
       );
+      return false;
     }
+  }
+
+  /// Ensure every selected service that requires auth has a verified token.
+  /// Returns true when all are satisfied (or none require a token).
+  Future<bool> _ensureTokensForSelection() async {
+    final missing = _services.where((s) {
+      return s.authRequired && _selected.contains(s.id) && !_tokens.containsKey(s.id);
+    }).toList();
+
+    for (final svc in missing) {
+      if (!mounted) return false;
+      final ok = await _promptToken(svc);
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('「${svc.label.isNotEmpty ? svc.label : svc.host}」需要有效密钥才能添加')),
+          );
+        }
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _confirmAddSelected() async {
+    final ok = await _ensureTokensForSelection();
+    if (!ok || !mounted) return;
+    Navigator.of(context).pop(_DiscoveryResult(
+      services: _services.where((s) => _selected.contains(s.id)).toList(),
+      tokens: _tokens,
+    ));
   }
 
   @override
@@ -953,7 +990,7 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
     return AlertDialog(
       title: const Text('扫描局域网'),
       content: SizedBox(
-        width: 360,
+        width: 320,
         child: _buildContent(theme),
       ),
       actions: [
@@ -962,12 +999,7 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
           child: const Text('取消'),
         ),
         FilledButton(
-          onPressed: _selected.isNotEmpty
-              ? () => Navigator.of(context).pop(_DiscoveryResult(
-                    services: _services.where((s) => _selected.contains(s.id)).toList(),
-                    tokens: _tokens,
-                  ))
-              : null,
+          onPressed: _selected.isNotEmpty ? _confirmAddSelected : null,
           child: Text('添加选中 (${_selected.length})'),
         ),
       ],
@@ -975,16 +1007,20 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
   }
 
   Widget _buildContent(ThemeData theme) {
-    // Scanning state
+    // Scanning state — compact: small spinner + one-line text.
     if (_scanning) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 40),
+        padding: EdgeInsets.symmetric(vertical: 16),
         child: Center(
-          child: Column(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              SizedBox(width: 12),
               Text('正在扫描局域网...'),
             ],
           ),
@@ -995,19 +1031,22 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
     // Error state
     if (_error != null) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
+        padding: const EdgeInsets.symmetric(vertical: 16),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
+              Icon(Icons.error_outline, size: 36, color: theme.colorScheme.error),
+              const SizedBox(height: 8),
+              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13)),
               const SizedBox(height: 12),
-              Text(_error!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
               OutlinedButton.icon(
                 onPressed: _scan,
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(Icons.refresh, size: 18),
                 label: const Text('重试'),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
             ],
           ),
@@ -1018,18 +1057,18 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
     // Empty results
     if (_services.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 40),
+        padding: EdgeInsets.symmetric(vertical: 16),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.wifi_off, size: 48, color: Colors.grey),
-              SizedBox(height: 12),
+              Icon(Icons.wifi_off, size: 36, color: Colors.grey),
+              SizedBox(height: 8),
               Text('未发现 easy_memory 服务'),
-              SizedBox(height: 4),
+              SizedBox(height: 2),
               Text(
                 '请确保其他设备已启动 Web 服务',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ],
           ),

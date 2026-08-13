@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:saf/saf.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart';
@@ -93,10 +94,15 @@ class WebServerService {
       port: _port,
       authRequired: _apiKey.isNotEmpty,
     );
+    debugPrint('[WebServer] discovery listener session: '
+        '${_discoverySession != null ? 'OK' : 'UNAVAILABLE (bind failed or port busy)'} '
+        'advertising $_localIp:$_port auth=${_apiKey.isNotEmpty}');
 
     // Android: acquire multicast lock so the discovery listener receives
     // broadcast packets.
     await AndroidMulticastLock.acquire();
+    debugPrint('[WebServer] Android multicast lock acquired '
+        '(no-op on non-Android)');
 
     return _port;
   }

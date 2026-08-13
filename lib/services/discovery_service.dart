@@ -55,42 +55,87 @@ class DiscoveryService {
         _discoveryPort,
       );
       socket.broadcastEnabled = true;
-
-      // A non-null snapshot of the socket for use inside the listener
-      // closure. A captured nullable local is not reliably promoted across
-      // Dart analyzer versions, so avoid relying on it.
-      final listener = socket;
-      listener.listen((event) {
-        if (event != RawSocketEvent.read) return;
-        final datagram = listener.receive();
-        if (datagram == null) return;
-
-        final request = utf8.decode(datagram.data);
-        if (request != _magicRequest) return;
-
-        // Reply unicast to the sender.
-        final platform = _detectPlatform();
-        final response = jsonEncode({
-          'app': 'easy_memory',
-          'label': label,
-          'host': host,
-          'port': port,
-          'auth_required': authRequired,
-          'platform': platform,
-        });
-        listener.send(
-          utf8.encode(response),
-          datagram.address,
-          datagram.port,
-        );
-      });
-
-      return DiscoverySession._(listener);
+      debugPrint('[Discovery] listener bound on 0.0.0.0:$_discoveryPort '
+          'broadcast=${socket.broadcastEnabled}');
     } catch (e) {
-      // Non-fatal: discovery unavailable (e.g. port in use, no permission).
+      debugPrint('[Discovery] listener bind FAILED on $_discoveryPort: $e');
       socket?.close();
       return null;
     }
+
+    // A non-null snapshot of the socket for use inside the listener
+    // closure. A captured nullable local is not reliably promoted across
+    // Dart analyzer versions, so avoid relying on it.
+    final listener = socket;
+    listener.listen((event) {
+      if (event != RawSocketEvent.read) return;
+      final datagram = listener.receive();
+      if (datagram == null) return;
+
+      final request = utf8.decode(datagram.data);
+      debugPrint('[Discovery] listener <- ${datagram.address.address}:'
+          '${datagram.port} "${request.length > 32 ? '${request.substring(0, 32)}…' : request}"');
+      if (request != _magicRequest) return;
+
+      // Reply unicast to the sender, or fall back to broadcast when the
+      // reported source address is unusable (known Android bug: broadcast
+      // packets arrive with source 0.0.0.0; sending to it is a no-op).
+      final replyAddress = resolveReplyAddress(datagram.address);
+      if (replyAddress != datagram.address) {
+        debugPrint('[Discovery] listener sender address "${datagram.address.address}" '
+            'unusable, falling back to broadcast reply');
+      }
+
+      final platform = _detectPlatform();
+      final response = jsonEncode({
+        'app': 'easy_memory',
+        'label': label,
+        'host': host,
+        'port': port,
+        'auth_required': authRequired,
+        'platform': platform,
+      });
+      try {
+        listener.send(
+          utf8.encode(response),
+          replyAddress,
+          datagram.port,
+        );
+        debugPrint('[Discovery] listener -> ${replyAddress.address}:${datagram.port} '
+            '(~${response.length}B payload)');
+      } catch (e) {
+        debugPrint('[Discovery] listener send FAILED -> ${replyAddress.address}:'
+            '${datagram.port}: $e');
+      }
+    });
+
+    return DiscoverySession._(listener);
+  }
+
+  /// Pick a usable destination for the discovery reply.
+  ///
+  /// On some platforms (notably Android) broadcast datagrams are reported
+  /// with a source address of `0.0.0.0` (or other non-unicast addresses),
+  /// which is an invalid send target. In that case we reply to the global
+  /// broadcast address — only the probing client holds its ephemeral
+  /// source port, so no other receiver is disturbed.
+  @visibleForTesting
+  static InternetAddress resolveReplyAddress(InternetAddress reported) {
+    final addr = reported.address;
+    if (addr == '0.0.0.0' ||
+        addr == '255.255.255.255' ||
+        reported.isLoopback == false && _isNonRoutable(addr)) {
+      return InternetAddress('255.255.255.255');
+    }
+    return reported;
+  }
+
+  /// True for addresses that are not a sender's routable unicast address
+  /// (e.g. subnet broadcast like 192.168.1.255).
+  static bool _isNonRoutable(String addr) {
+    final parts = addr.split('.');
+    if (parts.length != 4) return false;
+    return parts[3] == '255';
   }
 
   /// Send a broadcast probe and collect discovered services.
@@ -104,11 +149,13 @@ class DiscoveryService {
     int targetPort = _discoveryPort,
   }) async {
     final localIp = await _resolveLocalIp();
+    debugPrint('[Discovery] client local IP: $localIp, target port: $targetPort');
     final socket = await RawDatagramSocket.bind(
       InternetAddress.anyIPv4,
       0, // OS-assigned port
     );
     socket.broadcastEnabled = true;
+    debugPrint('[Discovery] client bound on ephemeral port ${socket.port}');
 
     try {
       // Send to the global broadcast address and the subnet broadcast.
@@ -130,8 +177,10 @@ class DiscoveryService {
       for (final addr in targets) {
         try {
           socket.send(probe, addr, targetPort);
-        } catch (_) {
-          // Best-effort: some addresses may not be reachable.
+          debugPrint('[Discovery] client -> broadcast ${addr.address}:$targetPort '
+              '(${probe.length}B)');
+        } catch (e) {
+          debugPrint('[Discovery] client broadcast send FAILED ${addr.address}: $e');
         }
       }
 
@@ -154,6 +203,8 @@ class DiscoveryService {
         try {
           final json = jsonDecode(utf8.decode(datagram.data))
               as Map<String, dynamic>;
+          debugPrint('[Discovery] client <- ${datagram.address.address}:'
+              '${datagram.port} "${String.fromCharCodes(datagram.data.take(48))}"');
           if (json['app'] != 'easy_memory') return;
 
           final svc = DiscoveredService(
@@ -167,15 +218,22 @@ class DiscoveryService {
           // Deduplicate by host:port.
           if (seen.add(svc.id)) {
             services.add(svc);
+            debugPrint('[Discovery] client accepted ${svc.id} '
+                '(label=${svc.label.isEmpty ? '?' : svc.label}, '
+                'auth=${svc.authRequired}, ${svc.platform})');
+          } else {
+            debugPrint('[Discovery] client dedup skip ${svc.id}');
           }
-        } catch (_) {
-          // Ignore malformed replies.
+        } catch (e) {
+          debugPrint('[Discovery] client malformed reply ignored: $e');
         }
       });
 
       await completer.future;
       // Timer has fired (completer is only completed by it); cancel defensively.
       timer.cancel();
+      debugPrint('[Discovery] client scan finished, found ${services.length} '
+          'service(s) in ${timeout.inMilliseconds}ms');
       return services;
     } finally {
       socket.close();
@@ -191,11 +249,15 @@ class DiscoveryService {
       ).timeout(const Duration(seconds: 5));
       for (final iface in interfaces) {
         for (final addr in iface.addresses) {
-          if (!addr.isLoopback) return addr.address;
+          if (!addr.isLoopback) {
+            debugPrint('[Discovery] local IP via iface ${iface.name}: '
+                '${addr.address}');
+            return addr.address;
+          }
         }
       }
-    } catch (_) {
-      // non-fatal
+    } catch (e) {
+      debugPrint('[Discovery] _resolveLocalIp FAILED (fall back loopback): $e');
     }
     return '127.0.0.1';
   }

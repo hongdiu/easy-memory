@@ -226,6 +226,7 @@ class _RuleEditPageState extends State<RuleEditPage> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _regexController,
+              textAlignVertical: TextAlignVertical.center,
               decoration: InputDecoration(
                 labelText: '正则表达式',
                 hintText: '例如: (\\w+)@(\\w+\\.\\w+)',
@@ -276,6 +277,7 @@ class _RuleEditPageState extends State<RuleEditPage> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _formatController,
+              textAlignVertical: TextAlignVertical.center,
               decoration: const InputDecoration(
                 labelText: '自定义格式',
                 hintText: '用 \$1, \$2 引用捕获组, 如 \$1@\$2',

@@ -74,4 +74,31 @@ void main() {
       expect(services, isEmpty);
     });
   });
+
+  group('DiscoveryService._resolveReplyAddress', () {
+    test('keeps a normal unicast sender address', () {
+      expect(
+        DiscoveryService.resolveReplyAddress(
+          InternetAddress('192.168.1.50'),
+        ).address,
+        '192.168.1.50',
+      );
+    });
+
+    test('falls back to broadcast for 0.0.0.0 (Android broadcast bug)', () {
+      expect(
+        DiscoveryService.resolveReplyAddress(InternetAddress('0.0.0.0')).address,
+        '255.255.255.255',
+      );
+    });
+
+    test('falls back to broadcast for subnet broadcast senders', () {
+      expect(
+        DiscoveryService.resolveReplyAddress(
+          InternetAddress('192.168.1.255'),
+        ).address,
+        '255.255.255.255',
+      );
+    });
+  });
 }

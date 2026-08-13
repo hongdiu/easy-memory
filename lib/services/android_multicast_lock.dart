@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Acquire/release the Android WiFi multicast lock.
@@ -14,12 +15,19 @@ class AndroidMulticastLock {
 
   /// Acquire the multicast lock. Safe to call multiple times.
   static Future<void> acquire() async {
-    if (!Platform.isAndroid || _acquired) return;
+    if (!Platform.isAndroid || _acquired) {
+      if (!Platform.isAndroid) {
+        debugPrint('[MulticastLock] acquire skipped (non-Android)');
+      }
+      return;
+    }
     try {
       await _channel.invokeMethod<void>('acquire');
       _acquired = true;
-    } catch (_) {
-      // Non-fatal: discovery still works when the lock is not available.
+      debugPrint('[MulticastLock] acquired (Android)');
+    } catch (e) {
+      debugPrint('[MulticastLock] acquire FAILED: $e — broadcast replies '
+          'may be dropped by WiFi power saving');
     }
   }
 
@@ -28,8 +36,9 @@ class AndroidMulticastLock {
     if (!Platform.isAndroid || !_acquired) return;
     try {
       await _channel.invokeMethod<void>('release');
-    } catch (_) {
-      // Non-fatal.
+      debugPrint('[MulticastLock] released');
+    } catch (e) {
+      debugPrint('[MulticastLock] release FAILED: $e');
     } finally {
       _acquired = false;
     }
