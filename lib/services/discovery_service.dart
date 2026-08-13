@@ -174,31 +174,35 @@ class DiscoveryService {
 
     final probe = utf8.encode(_magicRequest);
 
-    try {
-      // 1) Broadcast targets: global + subnet broadcast.
-      final targets = <InternetAddress>[
-        InternetAddress('255.255.255.255'),
-      ];
-      final subnetParts = localIp.split('.');
-      if (subnetParts.length == 4) {
-        subnetParts[3] = '255';
-        final subnetBroadcast = subnetParts.join('.');
-        if (subnetBroadcast != '255.255.255.255') {
-          targets.add(InternetAddress(subnetBroadcast));
-        }
+    // Broadcast targets: global + subnet broadcast (computed once, reused by
+    // every send round below).
+    final targets = <InternetAddress>[
+      InternetAddress('255.255.255.255'),
+    ];
+    final subnetParts = localIp.split('.');
+    if (subnetParts.length == 4) {
+      subnetParts[3] = '255';
+      final subnetBroadcast = subnetParts.join('.');
+      if (subnetBroadcast != '255.255.255.255') {
+        targets.add(InternetAddress(subnetBroadcast));
       }
+    }
 
+    void sendBroadcasts({String tag = ''}) {
       for (final addr in targets) {
         try {
           socket.send(probe, addr, targetPort);
           DiscoveryLogger.log('[Discovery] client -> broadcast ${addr.address}:$targetPort '
-              '(${probe.length}B)');
+              '(${probe.length}B)$tag');
         } catch (e) {
           DiscoveryLogger.log('[Discovery] client broadcast send FAILED ${addr.address}: $e');
         }
       }
+    }
 
-      // 2) Unicast /24 sweep as a fallback when the router drops broadcasts.
+    // Unicast /24 sweep as a fallback when the router drops broadcasts.
+    // Cheap (a few hundred non-blocking sends), so only sent in round 1.
+    void sendSweep() {
       var swept = 0;
       if (unicastSweep && subnetParts.length == 4) {
         final prefix = '${subnetParts[0]}.${subnetParts[1]}.${subnetParts[2]}';
@@ -214,6 +218,21 @@ class DiscoveryService {
         DiscoveryLogger.log('[Discovery] client -> unicast sweep $prefix.2-$prefix.254 '
             '($swept probes sent)');
       }
+    }
+
+    // WiFi power-save mode drops UDP frames in bursts that are *time-correlated*
+    // (an AP freshly gone quiet can drop every datagram for a second or two).
+    // Re-sending the cheap broadcasts at 1s and 2s makes at least one round
+    // land on an awake radio, turning a coin-flip scan into a near-guarantee.
+    final retryTimers = <Timer>[
+      Timer(const Duration(seconds: 1), () => sendBroadcasts(tag: ' (retry 1)')),
+      Timer(const Duration(seconds: 2), () => sendBroadcasts(tag: ' (retry 2)')),
+    ];
+
+    try {
+      // Round 1: broadcasts + full unicast sweep.
+      sendBroadcasts();
+      sendSweep();
 
       // Collect replies until timeout.
       final seen = <String>{};
@@ -267,6 +286,12 @@ class DiscoveryService {
           'service(s) in ${timeout.inMilliseconds}ms');
       return services;
     } finally {
+      // Retry timers may still be pending if timeout fired early (e.g. tests
+      // with a short timeout). Cancel them before closing the socket so a
+      // late send never targets a closed socket.
+      for (final t in retryTimers) {
+        t.cancel();
+      }
       socket.close();
     }
   }
