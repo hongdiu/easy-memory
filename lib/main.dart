@@ -153,7 +153,7 @@ class _HomePageState extends State<_HomePage> {
           NavigationDestination(
             icon: Icon(Icons.dns_outlined),
             selectedIcon: Icon(Icons.dns),
-            label: 'Web服务',
+            label: '高级',
           ),
         ],
       ),

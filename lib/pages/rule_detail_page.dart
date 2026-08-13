@@ -512,7 +512,7 @@ class _RemoteDeleteButton extends StatelessWidget {
     if (endpoints.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('请先在 Web 服务页面配置远程地址'),
+          content: Text('请先在高级页面配置远程地址'),
           duration: Duration(seconds: 3),
         ),
       );

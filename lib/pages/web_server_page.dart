@@ -28,7 +28,6 @@ class _WebServerPageState extends State<WebServerPage> {
   String _localIp = '';
 
   final List<RemoteEndpoint> _remoteEndpoints = [];
-  bool _endpointsExpanded = false;
   bool _loadingEndpoints = true;
 
   @override
@@ -113,6 +112,90 @@ class _WebServerPageState extends State<WebServerPage> {
     } catch (_) {
       // non-fatal
     }
+  }
+
+  void _showManagementDialog() {
+    final pageContext = context;
+    showDialog<void>(
+      context: pageContext,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('远程服务管理'),
+            content: SizedBox(
+              width: 360,
+              child: _loadingEndpoints
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  : _remoteEndpoints.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(
+                            child: Text(
+                              '尚未配置远程地址',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: _remoteEndpoints.map((e) => _EndpointTile(
+                                  endpoint: e,
+                                  onSync: () {
+                                    Navigator.of(dialogCtx).pop();
+                                    _startSync(e);
+                                  },
+                                  onEdit: () {
+                                    Navigator.of(dialogCtx).pop();
+                                    _editEndpoint(e);
+                                  },
+                                  onDelete: () {
+                                    _removeEndpoint(e);
+                                    setDialogState(() {});
+                                  },
+                                )).toList(),
+                          ),
+                        ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                child: const Text('关闭'),
+              ),
+              if (_remoteEndpoints.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogCtx).pop();
+                    _syncAll();
+                  },
+                  child: const Text('同步全部'),
+                ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(dialogCtx).pop();
+                  _discoverLan();
+                },
+                icon: const Icon(Icons.wifi_find, size: 18),
+                label: const Text('扫描局域网'),
+              ),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(dialogCtx).pop();
+                  _addEndpoint();
+                },
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('添加'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _showLogViewer() async {
@@ -431,7 +514,7 @@ class _WebServerPageState extends State<WebServerPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Web 服务'),
+        title: const Text('高级'),
         actions: [
           IconButton(
             icon: const Icon(Icons.text_snippet),
@@ -443,222 +526,141 @@ class _WebServerPageState extends State<WebServerPage> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          // Status card
+          // 1. Compact status row
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
                 children: [
                   Icon(
                     _running ? Icons.check_circle : Icons.cancel,
-                    size: 56,
+                    size: 22,
                     color: _running ? Colors.green : Colors.grey,
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _running ? '运行中' : '已停止',
-                    style: theme.textTheme.titleLarge,
-                  ),
-                  if (_statusMsg.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(_statusMsg,
-                          style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _running ? '运行中' : '已停止',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        if (_running && url != null)
+                          Text(url, style: theme.textTheme.bodySmall)
+                        else if (_statusMsg.isNotEmpty)
+                          Text(_statusMsg,
+                              style: theme.textTheme.bodySmall),
+                      ],
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonal(
+                    onPressed: _toggleServer,
+                    child: Text(_running ? '停止' : '启动'),
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 20),
 
-          // Device label config
+          // 2. One compact settings card (服务设置)
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.badge_outlined, size: 22),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _labelCtrl,
+                  Text('服务设置', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 12),
+                  // Device name row
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.badge_outlined, size: 22),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _labelCtrl,
+                          decoration: const InputDecoration(
+                            labelText: '设备名称',
+                            hintText: '其他端扫描到时显示的名称',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _saveDeviceLabel,
+                        child: const Text('保存'),
+                      ),
+                    ],
+                  ),
+                  if (!_running) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _portCtrl,
                       decoration: const InputDecoration(
-                        labelText: '设备名称',
-                        hintText: '其他端扫描到时显示的名称',
+                        labelText: '端口号',
+                        hintText: '8080',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _apiKeyCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '访问密钥 (可选)',
+                        hintText: '留空则不要求密钥',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: _saveDeviceLabel,
-                    child: const Text('保存'),
-                  ),
+                  ] else if (url != null) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Text('访问地址: ',
+                            style: TextStyle(fontSize: 16)),
+                        Expanded(
+                          child: SelectableText(
+                            url,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
           const SizedBox(height: 20),
 
-          // Port + API key config
-          if (!_running) ...[
-            TextField(
-              controller: _portCtrl,
-              decoration: const InputDecoration(
-                labelText: '端口号',
-                hintText: '8080',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _apiKeyCtrl,
-              decoration: const InputDecoration(
-                labelText: '访问密钥 (可选)',
-                hintText: '留空则不要求密钥',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-
-          // Start/Stop button
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: FilledButton.icon(
-              onPressed: _toggleServer,
-              icon: Icon(_running ? Icons.stop : Icons.play_arrow),
-              label: Text(_running ? '停止服务' : '启动服务'),
-            ),
-          ),
-
-          // Access URL
-          if (url != null) ...[
-            const SizedBox(height: 24),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('访问地址', style: theme.textTheme.titleSmall),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SelectableText(
-                            url,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.copy),
-                          tooltip: '复制地址',
-                          onPressed: () {},
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '在同一局域网的电脑浏览器中打开此地址即可查询',
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-
-          const SizedBox(height: 24),
-
-          // Remote endpoints panel
+          // 3. Remote services management card (prompt-based dialog)
           Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.dns),
-                  title: const Text('远程地址配置'),
-                  subtitle: const Text('记录各端 (Android/电脑) 的地址与密钥'),
-                  trailing: IconButton(
-                    icon: Icon(_endpointsExpanded ? Icons.expand_less : Icons.expand_more),
-                    onPressed: () => setState(() => _endpointsExpanded = !_endpointsExpanded),
-                  ),
-                ),
-                if (_endpointsExpanded)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (_loadingEndpoints)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        else if (_remoteEndpoints.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: Text(
-                              '尚未配置远程地址',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                            ),
-                          )
-                        else
-                          ..._remoteEndpoints.map((e) => _EndpointTile(
-                                endpoint: e,
-                                onSync: () => _startSync(e),
-                                onEdit: () => _editEndpoint(e),
-                                onDelete: () => _removeEndpoint(e),
-                              )),
-                        const SizedBox(height: 12),
-                        if (_remoteEndpoints.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _syncAll,
-                                icon: const Icon(Icons.sync, size: 18),
-                                label: const Text('同步全部'),
-                              ),
-                            ),
-                          ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: _discoverLan,
-                                icon: const Icon(Icons.wifi_find),
-                                label: const Text('扫描局域网'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: _addEndpoint,
-                                icon: const Icon(Icons.add),
-                                label: const Text('添加远程地址'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+            child: ListTile(
+              leading: const Icon(Icons.dns),
+              title: const Text('远程服务管理'),
+              subtitle: Text('${_remoteEndpoints.length} 个已配置'),
+              trailing: FilledButton.tonal(
+                onPressed: _showManagementDialog,
+                child: const Text('管理'),
+              ),
             ),
           ),
+          const SizedBox(height: 20),
 
-          const SizedBox(height: 24),
-
-          // Data cleanup panel
+          // 4. Data cleanup (keep as-is)
           Card(
             child: ListTile(
               leading: const Icon(Icons.cleaning_services_outlined),
@@ -1152,20 +1154,23 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
   Widget _buildContent(ThemeData theme) {
     // Scanning state — compact: small spinner + one-line text.
     if (_scanning) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
-        child: Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2.5),
-              ),
-              SizedBox(width: 12),
-              Text('正在扫描局域网...'),
-            ],
+      return const SizedBox(
+        height: 76,
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+                SizedBox(width: 12),
+                Text('正在扫描局域网...'),
+              ],
+            ),
           ),
         ),
       );
@@ -1209,31 +1214,34 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
 
     // Empty results
     if (_services.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.wifi_off, size: 36, color: Colors.grey),
-              const SizedBox(height: 8),
-              const Text('未发现 easy_memory 服务'),
-              const SizedBox(height: 2),
-              const Text(
-                '请确保其他设备已启动 Web 服务',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 12),
-              TextButton.icon(
-                onPressed: _showLogViewer,
-                icon: const Icon(Icons.text_snippet, size: 16),
-                label: const Text('查看日志', style: TextStyle(fontSize: 12)),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  foregroundColor: Colors.grey[600],
+      return SizedBox(
+        height: 160,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.wifi_off, size: 36, color: Colors.grey),
+                const SizedBox(height: 8),
+                const Text('未发现 easy_memory 服务'),
+                const SizedBox(height: 2),
+                const Text(
+                  '请确保其他设备已启动 Web 服务',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: _showLogViewer,
+                  icon: const Icon(Icons.text_snippet, size: 16),
+                  label: const Text('查看日志', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
