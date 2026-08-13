@@ -91,6 +91,45 @@ class _WebServerPageState extends State<WebServerPage> {
     }
   }
 
+  Future<void> _showLogViewer() async {
+    final logText = await DiscoveryLogger.readAll();
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.text_snippet, size: 20),
+            SizedBox(width: 8),
+            Text('发现日志', style: TextStyle(fontSize: 16)),
+          ],
+        ),
+        content: SizedBox(
+          width: 360,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              logText,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11, height: 1.4),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await DiscoveryLogger.clear();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('清空日志'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _toggleServer() async {
     if (_running) {
       await _service.stop();
@@ -367,7 +406,16 @@ class _WebServerPageState extends State<WebServerPage> {
     final url = _running ? 'http://$_localIp:${_service.port}' : null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Web 服务')),
+      appBar: AppBar(
+        title: const Text('Web 服务'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.text_snippet),
+            tooltip: '查看日志',
+            onPressed: _showLogViewer,
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
