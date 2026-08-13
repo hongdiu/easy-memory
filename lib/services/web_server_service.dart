@@ -117,6 +117,31 @@ class WebServerService {
     _label = '';
   }
 
+  /// Update the advertised device label and persist it.
+  ///
+  /// Restarts the UDP discovery listener so the new label takes effect
+  /// immediately (the reply payload is captured at listener start).
+  Future<void> updateLabel(String label) async {
+    final trimmed = label.trim();
+    _label = trimmed.isEmpty ? DeviceConfig.defaultLabel() : trimmed;
+    await DeviceConfig(label: _label).save();
+
+    // Restart the discovery listener with the new label. Only meaningful
+    // while the HTTP server is running; otherwise no-op.
+    if (_server != null) {
+      _discoverySession?.close();
+      _discoverySession = await DiscoveryService.startListener(
+        label: _label,
+        host: _localIp,
+        port: _port,
+        authRequired: _apiKey.isNotEmpty,
+      );
+      DiscoveryLogger.log('[WebServer] discovery listener restarted for new '
+          'label "$_label" (session: '
+          '${_discoverySession != null ? 'OK' : 'UNAVAILABLE'})');
+    }
+  }
+
   /// Resolve the first non-loopback IPv4 address of this device.
   static Future<String> _resolveLocalIp() async {
     try {

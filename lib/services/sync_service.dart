@@ -8,6 +8,7 @@ import '../models/file_record.dart';
 import '../models/match_item.dart';
 import '../models/remote_endpoint.dart';
 import '../models/rule.dart';
+import 'data_change_notifier.dart';
 
 /// Progress of a sync operation.
 class SyncProgress {
@@ -241,6 +242,9 @@ class SyncService {
           '同步完成: $rulesMerged 条规则, $matchItemsMerged 个匹配项, $fileRecordsMerged 条文件记录';
 
       onProgress?.call(SyncProgress(percent: 100, message: summary));
+
+      // Notify UI pages (home list, global query) to reload merged data.
+      DataChangeNotifier.instance.notifyDataChanged();
 
       return SyncResult(
         success: true,

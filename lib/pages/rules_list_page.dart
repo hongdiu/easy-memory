@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:easy_memory/models/rule.dart';
 import 'package:easy_memory/data/rule_repository.dart';
+import 'package:easy_memory/services/data_change_notifier.dart';
 import 'rule_edit_page.dart';
 import 'export_import_page.dart';
 import 'rule_detail_page.dart';
@@ -21,6 +22,14 @@ class _RulesListPageState extends State<RulesListPage> {
   void initState() {
     super.initState();
     _loadRules();
+    // 同步/导入等写库操作后自动刷新，避免切回首页时数据过期。
+    DataChangeNotifier.instance.addListener(_loadRules);
+  }
+
+  @override
+  void dispose() {
+    DataChangeNotifier.instance.removeListener(_loadRules);
+    super.dispose();
   }
 
   Future<void> _loadRules() async {

@@ -12,6 +12,7 @@ import 'package:easy_memory/data/file_record_repository.dart';
 import 'package:easy_memory/data/rule_repository.dart';
 import 'package:easy_memory/services/remote_delete_service.dart';
 import 'package:easy_memory/services/local_delete_service.dart';
+import 'package:easy_memory/services/data_change_notifier.dart';
 import 'package:easy_memory/pages/file_record_detail_page.dart';
 
 class GlobalQueryPage extends StatefulWidget {
@@ -37,13 +38,24 @@ class _GlobalQueryPageState extends State<GlobalQueryPage> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+    // 同步/导入等写库操作后，若有查询词则自动重查，保证结果最新。
+    DataChangeNotifier.instance.addListener(_onDataChanged);
   }
 
   @override
   void dispose() {
+    DataChangeNotifier.instance.removeListener(_onDataChanged);
     _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// 数据变更后重查当前关键词（无词则忽略，避免无谓请求）。
+  void _onDataChanged() {
+    final query = _searchController.text.trim();
+    if (query.isNotEmpty && mounted) {
+      _performSearch(query);
+    }
   }
 
   void _onSearchChanged() {

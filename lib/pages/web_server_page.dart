@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/remote_endpoint.dart';
 import '../services/web_server_service.dart';
+import '../services/device_config.dart';
 import '../services/sync_service.dart';
 import '../services/cleanup_service.dart';
 import '../services/discovery_service.dart';
@@ -21,6 +22,7 @@ class _WebServerPageState extends State<WebServerPage> {
   final WebServerService _service = WebServerService();
   final TextEditingController _portCtrl = TextEditingController(text: '8080');
   final TextEditingController _apiKeyCtrl = TextEditingController();
+  final TextEditingController _labelCtrl = TextEditingController();
   bool _running = false;
   String _statusMsg = '';
   String _localIp = '';
@@ -34,13 +36,35 @@ class _WebServerPageState extends State<WebServerPage> {
     super.initState();
     _findLocalIp();
     _loadEndpoints();
+    _loadDeviceLabel();
   }
 
   @override
   void dispose() {
     _portCtrl.dispose();
     _apiKeyCtrl.dispose();
+    _labelCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadDeviceLabel() async {
+    final config = await DeviceConfig.load();
+    if (mounted) _labelCtrl.text = config.label;
+  }
+
+  Future<void> _saveDeviceLabel() async {
+    final label = _labelCtrl.text.trim();
+    if (label.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('设备名称不能为空')),
+      );
+      return;
+    }
+    await _service.updateLabel(label);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('设备名称已保存：$label')),
+    );
   }
 
   Future<void> _findLocalIp() async {
@@ -441,6 +465,37 @@ class _WebServerPageState extends State<WebServerPage> {
                       child: Text(_statusMsg,
                           style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13)),
                     ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Device label config
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Icon(Icons.badge_outlined, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _labelCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '设备名称',
+                        hintText: '其他端扫描到时显示的名称',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _saveDeviceLabel,
+                    child: const Text('保存'),
+                  ),
                 ],
               ),
             ),
