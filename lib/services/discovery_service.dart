@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'discovery_logger.dart';
+
 /// A remote easy_memory Web service discovered on the LAN.
 class DiscoveredService {
   final String label;
@@ -55,10 +57,10 @@ class DiscoveryService {
         _discoveryPort,
       );
       socket.broadcastEnabled = true;
-      debugPrint('[Discovery] listener bound on 0.0.0.0:$_discoveryPort '
+      DiscoveryLogger.log('[Discovery] listener bound on 0.0.0.0:$_discoveryPort '
           'broadcast=${socket.broadcastEnabled}');
     } catch (e) {
-      debugPrint('[Discovery] listener bind FAILED on $_discoveryPort: $e');
+      DiscoveryLogger.log('[Discovery] listener bind FAILED on $_discoveryPort: $e');
       socket?.close();
       return null;
     }
@@ -73,7 +75,7 @@ class DiscoveryService {
       if (datagram == null) return;
 
       final request = utf8.decode(datagram.data);
-      debugPrint('[Discovery] listener <- ${datagram.address.address}:'
+      DiscoveryLogger.log('[Discovery] listener <- ${datagram.address.address}:'
           '${datagram.port} "${request.length > 32 ? '${request.substring(0, 32)}…' : request}"');
       if (request != _magicRequest) return;
 
@@ -82,7 +84,7 @@ class DiscoveryService {
       // packets arrive with source 0.0.0.0; sending to it is a no-op).
       final replyAddress = resolveReplyAddress(datagram.address);
       if (replyAddress != datagram.address) {
-        debugPrint('[Discovery] listener sender address "${datagram.address.address}" '
+        DiscoveryLogger.log('[Discovery] listener sender address "${datagram.address.address}" '
             'unusable, falling back to broadcast reply');
       }
 
@@ -101,10 +103,10 @@ class DiscoveryService {
           replyAddress,
           datagram.port,
         );
-        debugPrint('[Discovery] listener -> ${replyAddress.address}:${datagram.port} '
+        DiscoveryLogger.log('[Discovery] listener -> ${replyAddress.address}:${datagram.port} '
             '(~${response.length}B payload)');
       } catch (e) {
-        debugPrint('[Discovery] listener send FAILED -> ${replyAddress.address}:'
+        DiscoveryLogger.log('[Discovery] listener send FAILED -> ${replyAddress.address}:'
             '${datagram.port}: $e');
       }
     });
@@ -149,13 +151,13 @@ class DiscoveryService {
     int targetPort = _discoveryPort,
   }) async {
     final localIp = await _resolveLocalIp();
-    debugPrint('[Discovery] client local IP: $localIp, target port: $targetPort');
+    DiscoveryLogger.log('[Discovery] client local IP: $localIp, target port: $targetPort');
     final socket = await RawDatagramSocket.bind(
       InternetAddress.anyIPv4,
       0, // OS-assigned port
     );
     socket.broadcastEnabled = true;
-    debugPrint('[Discovery] client bound on ephemeral port ${socket.port}');
+    DiscoveryLogger.log('[Discovery] client bound on ephemeral port ${socket.port}');
 
     try {
       // Send to the global broadcast address and the subnet broadcast.
@@ -177,10 +179,10 @@ class DiscoveryService {
       for (final addr in targets) {
         try {
           socket.send(probe, addr, targetPort);
-          debugPrint('[Discovery] client -> broadcast ${addr.address}:$targetPort '
+          DiscoveryLogger.log('[Discovery] client -> broadcast ${addr.address}:$targetPort '
               '(${probe.length}B)');
         } catch (e) {
-          debugPrint('[Discovery] client broadcast send FAILED ${addr.address}: $e');
+          DiscoveryLogger.log('[Discovery] client broadcast send FAILED ${addr.address}: $e');
         }
       }
 
@@ -203,7 +205,7 @@ class DiscoveryService {
         try {
           final json = jsonDecode(utf8.decode(datagram.data))
               as Map<String, dynamic>;
-          debugPrint('[Discovery] client <- ${datagram.address.address}:'
+          DiscoveryLogger.log('[Discovery] client <- ${datagram.address.address}:'
               '${datagram.port} "${String.fromCharCodes(datagram.data.take(48))}"');
           if (json['app'] != 'easy_memory') return;
 
@@ -218,21 +220,21 @@ class DiscoveryService {
           // Deduplicate by host:port.
           if (seen.add(svc.id)) {
             services.add(svc);
-            debugPrint('[Discovery] client accepted ${svc.id} '
+            DiscoveryLogger.log('[Discovery] client accepted ${svc.id} '
                 '(label=${svc.label.isEmpty ? '?' : svc.label}, '
                 'auth=${svc.authRequired}, ${svc.platform})');
           } else {
-            debugPrint('[Discovery] client dedup skip ${svc.id}');
+            DiscoveryLogger.log('[Discovery] client dedup skip ${svc.id}');
           }
         } catch (e) {
-          debugPrint('[Discovery] client malformed reply ignored: $e');
+          DiscoveryLogger.log('[Discovery] client malformed reply ignored: $e');
         }
       });
 
       await completer.future;
       // Timer has fired (completer is only completed by it); cancel defensively.
       timer.cancel();
-      debugPrint('[Discovery] client scan finished, found ${services.length} '
+      DiscoveryLogger.log('[Discovery] client scan finished, found ${services.length} '
           'service(s) in ${timeout.inMilliseconds}ms');
       return services;
     } finally {
@@ -250,14 +252,14 @@ class DiscoveryService {
       for (final iface in interfaces) {
         for (final addr in iface.addresses) {
           if (!addr.isLoopback) {
-            debugPrint('[Discovery] local IP via iface ${iface.name}: '
+            DiscoveryLogger.log('[Discovery] local IP via iface ${iface.name}: '
                 '${addr.address}');
             return addr.address;
           }
         }
       }
     } catch (e) {
-      debugPrint('[Discovery] _resolveLocalIp FAILED (fall back loopback): $e');
+      DiscoveryLogger.log('[Discovery] _resolveLocalIp FAILED (fall back loopback): $e');
     }
     return '127.0.0.1';
   }

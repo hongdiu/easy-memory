@@ -8,6 +8,7 @@ import '../services/web_server_service.dart';
 import '../services/sync_service.dart';
 import '../services/cleanup_service.dart';
 import '../services/discovery_service.dart';
+import '../services/discovery_logger.dart';
 
 class WebServerPage extends StatefulWidget {
   const WebServerPage({super.key});
@@ -952,6 +953,45 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
     }
   }
 
+  Future<void> _showLogViewer() async {
+    final logText = await DiscoveryLogger.readAll();
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.text_snippet, size: 20),
+            SizedBox(width: 8),
+            Text('发现日志', style: TextStyle(fontSize: 16)),
+          ],
+        ),
+        content: SizedBox(
+          width: 360,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              logText,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11, height: 1.4),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await DiscoveryLogger.clear();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('清空日志'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Ensure every selected service that requires auth has a verified token.
   /// Returns true when all are satisfied (or none require a token).
   Future<bool> _ensureTokensForSelection() async {
@@ -1048,6 +1088,16 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
                   visualDensity: VisualDensity.compact,
                 ),
               ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: _showLogViewer,
+                icon: const Icon(Icons.text_snippet, size: 16),
+                label: const Text('查看日志', style: TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: Colors.grey[600],
+                ),
+              ),
             ],
           ),
         ),
@@ -1056,19 +1106,29 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
 
     // Empty results
     if (_services.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.wifi_off, size: 36, color: Colors.grey),
-              SizedBox(height: 8),
-              Text('未发现 easy_memory 服务'),
-              SizedBox(height: 2),
-              Text(
+              const Icon(Icons.wifi_off, size: 36, color: Colors.grey),
+              const SizedBox(height: 8),
+              const Text('未发现 easy_memory 服务'),
+              const SizedBox(height: 2),
+              const Text(
                 '请确保其他设备已启动 Web 服务',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: _showLogViewer,
+                icon: const Icon(Icons.text_snippet, size: 16),
+                label: const Text('查看日志', style: TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: Colors.grey[600],
+                ),
               ),
             ],
           ),
