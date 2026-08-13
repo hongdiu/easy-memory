@@ -56,9 +56,13 @@ class DiscoveryService {
       );
       socket.broadcastEnabled = true;
 
-      socket.listen((event) {
+      // A non-null snapshot of the socket for use inside the listener
+      // closure. A captured nullable local is not reliably promoted across
+      // Dart analyzer versions, so avoid relying on it.
+      final listener = socket;
+      listener.listen((event) {
         if (event != RawSocketEvent.read) return;
-        final datagram = socket.receive();
+        final datagram = listener.receive();
         if (datagram == null) return;
 
         final request = utf8.decode(datagram.data);
@@ -74,14 +78,14 @@ class DiscoveryService {
           'auth_required': authRequired,
           'platform': platform,
         });
-        socket.send(
+        listener.send(
           utf8.encode(response),
           datagram.address,
           datagram.port,
         );
       });
 
-      return DiscoverySession._(socket);
+      return DiscoverySession._(listener);
     } catch (e) {
       // Non-fatal: discovery unavailable (e.g. port in use, no permission).
       socket?.close();
