@@ -152,9 +152,16 @@ class DiscoveryService {
   ///
   /// [targetPort] allows overriding the discovery port (default 50100). Tests
   /// may use an unused port to guarantee an empty result.
+  ///
+  /// Some routers / AP isolation filter broadcast frames between LAN hosts
+  /// (PC broadcast never reaches the Android phone) while unicast still
+  /// works. So besides the broadcasts we also sweep the local /24 subnet
+  /// with unicast probes — the same path already proven to work on
+  /// Android↔PC (their replies came back fine).
   static Future<List<DiscoveredService>> discover({
     Duration timeout = _defaultTimeout,
     int targetPort = _discoveryPort,
+    bool unicastSweep = true,
   }) async {
     final localIp = await _resolveLocalIp();
     DiscoveryLogger.log('[Discovery] client local IP: $localIp, target port: $targetPort');
@@ -165,14 +172,13 @@ class DiscoveryService {
     socket.broadcastEnabled = true;
     DiscoveryLogger.log('[Discovery] client bound on ephemeral port ${socket.port}');
 
+    final probe = utf8.encode(_magicRequest);
+
     try {
-      // Send to the global broadcast address and the subnet broadcast.
-      final probe = utf8.encode(_magicRequest);
+      // 1) Broadcast targets: global + subnet broadcast.
       final targets = <InternetAddress>[
         InternetAddress('255.255.255.255'),
       ];
-
-      // Compute subnet broadcast address for the /24 prefix.
       final subnetParts = localIp.split('.');
       if (subnetParts.length == 4) {
         subnetParts[3] = '255';
@@ -190,6 +196,23 @@ class DiscoveryService {
         } catch (e) {
           DiscoveryLogger.log('[Discovery] client broadcast send FAILED ${addr.address}: $e');
         }
+      }
+
+      // 2) Unicast /24 sweep as a fallback when the router drops broadcasts.
+      var swept = 0;
+      if (unicastSweep && subnetParts.length == 4) {
+        final prefix = '${subnetParts[0]}.${subnetParts[1]}.${subnetParts[2]}';
+        for (var host = 2; host <= 254; host++) {
+          final ip = '$prefix.$host';
+          try {
+            socket.send(probe, InternetAddress(ip), targetPort);
+            swept++;
+          } catch (_) {
+            // keep going; some host IPs are not assignable
+          }
+        }
+        DiscoveryLogger.log('[Discovery] client -> unicast sweep $prefix.2-$prefix.254 '
+            '($swept probes sent)');
       }
 
       // Collect replies until timeout.
