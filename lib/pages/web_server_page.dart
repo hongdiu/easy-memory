@@ -1157,7 +1157,6 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
             );
           }),
         ],
-      ),
     );
   }
 
