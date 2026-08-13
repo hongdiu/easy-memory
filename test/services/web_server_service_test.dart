@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:easy_memory/data/database.dart';
@@ -14,6 +15,9 @@ import 'package:easy_memory/models/file_record.dart';
 import 'package:easy_memory/services/web_server_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  PathProviderPlatform.instance = _FakePathProvider();
+
   late Database db;
   late RuleRepository ruleRepo;
   late MatchItemRepository matchItemRepo;
@@ -363,4 +367,19 @@ directory TEXT NOT NULL,
       }
     });
   });
+}
+
+/// Path provider stub that redirects app-support storage to a temp directory,
+/// so [DeviceConfig.load] works without a platform binding implementation.
+class _FakePathProvider extends PathProviderPlatform {
+  @override
+  Future<String?> getApplicationSupportPath() async =>
+      Directory.systemTemp.path;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async =>
+      Directory.systemTemp.path;
+
+  @override
+  Future<String?> getTemporaryPath() async => Directory.systemTemp.path;
 }
