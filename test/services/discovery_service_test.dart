@@ -7,6 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:easy_memory/services/discovery_service.dart';
 
 void main() {
+  // Use an isolated discovery port so this suite never collides with the
+  // web_server_service_test listener (also bound to 50100) when CI runs
+  // test files in parallel — otherwise SO_REUSEADDR may deliver our probe
+  // to the wrong listener and we'd assert against another test's label.
+  const int testUdpPort = 50101;
+
   group('DiscoveryService', () {
     test('startListener replies to discovery request', () async {
       final session = await DiscoveryService.startListener(
@@ -14,6 +20,7 @@ void main() {
         host: '127.0.0.1',
         port: 8080,
         authRequired: true,
+        udpPort: testUdpPort,
       );
       expect(session, isNotNull);
 
@@ -26,7 +33,7 @@ void main() {
         socket.send(
           utf8.encode('EASY_MEMORY_DISCOVERY'),
           InternetAddress.loopbackIPv4,
-          50100,
+          testUdpPort,
         );
 
         // Wait up to 2s for a reply.

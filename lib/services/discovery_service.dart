@@ -42,6 +42,11 @@ class DiscoveryService {
 
   /// Start listening on the discovery UDP port.
   ///
+  /// [udpPort] overrides the discovery port (default 50100). Tests may use
+  /// an isolated port to avoid cross-process replies on CI runners where
+  /// other test files bind 50100 simultaneously (SO_REUSEADDR can deliver
+  /// probes to the wrong listener).
+  ///
   /// Returns a [DiscoverySession] that the caller must [close] when the
   /// HTTP server stops.
   static Future<DiscoverySession?> startListener({
@@ -49,18 +54,19 @@ class DiscoveryService {
     required String host,
     required int port,
     required bool authRequired,
+    int udpPort = _discoveryPort,
   }) async {
     RawDatagramSocket? socket;
     try {
       socket = await RawDatagramSocket.bind(
         InternetAddress.anyIPv4,
-        _discoveryPort,
+        udpPort,
       );
       socket.broadcastEnabled = true;
-      DiscoveryLogger.log('[Discovery] listener bound on 0.0.0.0:$_discoveryPort '
+      DiscoveryLogger.log('[Discovery] listener bound on 0.0.0.0:$udpPort '
           'broadcast=${socket.broadcastEnabled}');
     } catch (e) {
-      DiscoveryLogger.log('[Discovery] listener bind FAILED on $_discoveryPort: $e');
+      DiscoveryLogger.log('[Discovery] listener bind FAILED on $udpPort: $e');
       socket?.close();
       return null;
     }
