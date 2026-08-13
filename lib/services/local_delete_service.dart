@@ -44,6 +44,13 @@ class LocalDeleteService {
             await saf.delete(path);
           } on SafNotFoundException {
             // File already gone → DB record still cleared below
+          } on SafPermissionException {
+            // 未持久化授权（如 SAF 目录权限丢失）——文件仍在，保留 DB
+            // 记录，交由用户重新选择目录授权后再删除
+            return const LocalDeleteResult(
+              success: false,
+              message: '无该目录文件的删除权限，请选择该目录后再执行删除',
+            );
           } on SafIoException {
             // saf 将 FileNotFoundException 包装为 SafIoException
           }
