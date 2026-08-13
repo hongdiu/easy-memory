@@ -1228,7 +1228,7 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
     // Empty results
     if (_services.isEmpty) {
       return SizedBox(
-        height: 160,
+        height: 180,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 16),
           child: Center(
@@ -1244,14 +1244,35 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 const SizedBox(height: 12),
-                TextButton.icon(
-                  onPressed: _showLogViewer,
-                  icon: const Icon(Icons.text_snippet, size: 16),
-                  label: const Text('查看日志', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    foregroundColor: Colors.grey[600],
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 重新扫描：清空选择并发起新一轮扫描
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _selected.clear();
+                          _tokens.clear();
+                        });
+                        _scan();
+                      },
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('重新扫描', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      onPressed: _showLogViewer,
+                      icon: const Icon(Icons.text_snippet, size: 16),
+                      label: const Text('查看日志', style: TextStyle(fontSize: 12)),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: Colors.grey[600],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
