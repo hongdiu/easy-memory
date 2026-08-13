@@ -1076,13 +1076,9 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
       );
     }
 
-    // Results list
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height / 3,
-      ),
-      child: ListView(
-        shrinkWrap: true,
+    // Results list — no height constraint so many services expand the dialog.
+    return ListView(
+      shrinkWrap: true,
         children: [
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
