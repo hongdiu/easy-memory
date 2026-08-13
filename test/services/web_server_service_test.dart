@@ -228,6 +228,7 @@ directory TEXT NOT NULL,
         final request = await client.getUrl(
           Uri.parse('http://127.0.0.1:${server.port}/api/health'),
         );
+        request.headers.set('x-api-key', 'secret');
         final response = await request.close();
         expect(response.statusCode, 200);
         final body = await response.transform(utf8.decoder).join();
