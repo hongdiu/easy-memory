@@ -96,8 +96,12 @@ class DiscoveryService {
   /// Send a broadcast probe and collect discovered services.
   ///
   /// Returns a list of [DiscoveredService] found within [timeout].
+  ///
+  /// [targetPort] allows overriding the discovery port (default 50100). Tests
+  /// may use an unused port to guarantee an empty result.
   static Future<List<DiscoveredService>> discover({
     Duration timeout = _defaultTimeout,
+    int targetPort = _discoveryPort,
   }) async {
     final localIp = await _resolveLocalIp();
     final socket = await RawDatagramSocket.bind(
@@ -125,7 +129,7 @@ class DiscoveryService {
 
       for (final addr in targets) {
         try {
-          socket.send(probe, addr, _discoveryPort);
+          socket.send(probe, addr, targetPort);
         } catch (_) {
           // Best-effort: some addresses may not be reachable.
         }

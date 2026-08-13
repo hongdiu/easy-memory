@@ -64,12 +64,14 @@ void main() {
     });
 
     test('discover returns empty list when no service is running', () async {
+      // Use an isolated port that nothing listens on. In CI, other test files
+      // may run in parallel and start a discovery listener on port 50100,
+      // whose broadcast reply would otherwise pollute this assertion.
       final services = await DiscoveryService.discover(
         timeout: const Duration(milliseconds: 800),
+        targetPort: 50199,
       );
-      // No listener is running on port 50100 in this test, so expect no
-      // results (or at worst leftover from other tests — filter by host).
-      expect(services.where((s) => s.host != '127.0.0.1'), isEmpty);
+      expect(services, isEmpty);
     });
   });
 }
