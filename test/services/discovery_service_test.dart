@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -30,20 +31,22 @@ void main() {
 
         // Wait up to 2s for a reply.
         String? reply;
-        final deadline = DateTime.now().add(const Duration(seconds: 2));
-        while (DateTime.now().isBefore(deadline) && reply == null) {
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-          final event = socket.events.firstWhere(
-            (e) => e == RawSocketEvent.read,
-            orElse: () => RawSocketEvent.closed,
-          );
-          if (event == RawSocketEvent.read) {
-            final datagram = socket.receive();
-            if (datagram != null) {
-              reply = utf8.decode(datagram.data);
-              break;
-            }
+        final replyCompleter = Completer<String?>();
+        final sub = socket.listen((event) {
+          if (event != RawSocketEvent.read) return;
+          final datagram = socket.receive();
+          if (datagram != null && !replyCompleter.isCompleted) {
+            replyCompleter.complete(utf8.decode(datagram.data));
           }
+        });
+        final timer = Timer(const Duration(seconds: 2), () {
+          if (!replyCompleter.isCompleted) replyCompleter.complete(null);
+        });
+        try {
+          reply = await replyCompleter.future;
+        } finally {
+          timer.cancel();
+          await sub.cancel();
         }
 
         expect(reply, isNotNull);

@@ -58,7 +58,7 @@ class DiscoveryService {
 
       socket.listen((event) {
         if (event != RawSocketEvent.read) return;
-        final datagram = socket!.receive();
+        final datagram = socket.receive();
         if (datagram == null) return;
 
         final request = utf8.decode(datagram.data);
@@ -74,7 +74,7 @@ class DiscoveryService {
           'auth_required': authRequired,
           'platform': platform,
         });
-        socket!.send(
+        socket.send(
           utf8.encode(response),
           datagram.address,
           datagram.port,
@@ -166,6 +166,8 @@ class DiscoveryService {
       });
 
       await completer.future;
+      // Timer has fired (completer is only completed by it); cancel defensively.
+      timer.cancel();
       return services;
     } finally {
       socket.close();

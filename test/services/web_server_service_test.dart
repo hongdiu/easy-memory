@@ -207,7 +207,7 @@ directory TEXT NOT NULL,
         expect(data['platform'], isNotEmpty);
         expect(data['timestamp'], isNotEmpty);
         expect(data['label'], isNotEmpty);
-        expect(data['auth_required'], isBool);
+        expect(data['auth_required'], isA<bool>());
       } finally {
         client.close();
       }
@@ -229,6 +229,7 @@ directory TEXT NOT NULL,
       } finally {
         client.close();
       }
+    });
 
     test('POST /api/delete deletes an existing file', () async {
       await server.start(port: 0);

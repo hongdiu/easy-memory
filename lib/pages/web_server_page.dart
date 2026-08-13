@@ -181,7 +181,7 @@ class _WebServerPageState extends State<WebServerPage> {
       return;
     }
 
-    final results = <String, String>[];
+    final results = <String>[];
     for (var i = 0; i < _remoteEndpoints.length; i++) {
       final endpoint = _remoteEndpoints[i];
       final service = SyncService();
@@ -1102,7 +1102,7 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                           decoration: BoxDecoration(
-                            color: hasToken ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                            color: hasToken ? Colors.green.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
