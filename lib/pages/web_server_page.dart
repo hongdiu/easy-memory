@@ -1078,7 +1078,9 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
 
     // Results list
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 360),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height / 3,
+      ),
       child: ListView(
         shrinkWrap: true,
         children: [

@@ -226,7 +226,6 @@ class _RuleEditPageState extends State<RuleEditPage> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _regexController,
-              textAlignVertical: TextAlignVertical.center,
               decoration: InputDecoration(
                 labelText: '正则表达式',
                 hintText: '例如: (\\w+)@(\\w+\\.\\w+)',
@@ -240,7 +239,6 @@ class _RuleEditPageState extends State<RuleEditPage> {
                     : null,
                 errorText: _regexValid ? null : _regexError,
               ),
-              maxLines: 2,
               validator: (v) {
                 if (v == null || v.trim().isEmpty) return '请输入正则表达式';
                 return null;
@@ -277,7 +275,6 @@ class _RuleEditPageState extends State<RuleEditPage> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _formatController,
-              textAlignVertical: TextAlignVertical.center,
               decoration: const InputDecoration(
                 labelText: '自定义格式',
                 hintText: '用 \$1, \$2 引用捕获组, 如 \$1@\$2',
@@ -285,7 +282,6 @@ class _RuleEditPageState extends State<RuleEditPage> {
                 prefixIcon: Icon(Icons.format_align_left),
                 helperText: '默认 \$0 表示完整匹配',
               ),
-              maxLines: 2,
               onChanged: (_) => _updatePreview(),
             ),
             const SizedBox(height: 16),
