@@ -16,6 +16,10 @@ import 'package:easy_memory/services/web_server_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // TestWidgetsFlutterBinding installs a mock HttpOverrides that answers every
+  // request with 400. These tests round-trip against the real local server, so
+  // restore real networking.
+  HttpOverrides.global = null;
   PathProviderPlatform.instance = _FakePathProvider();
 
   late Database db;
