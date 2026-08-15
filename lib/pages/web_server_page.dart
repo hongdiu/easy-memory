@@ -270,7 +270,7 @@ class _WebServerPageState extends State<WebServerPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 主操作一行两个：扫描局域网 + 添加
+                  // 主操作一行两个：自扫描 + 添加
                   Row(
                     children: [
                       Expanded(
@@ -280,7 +280,7 @@ class _WebServerPageState extends State<WebServerPage> {
                             _discoverLan();
                           },
                           icon: const Icon(Icons.wifi_find, size: 16),
-                          label: const Text('扫描局域网'),
+                          label: const Text('自扫描'),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1249,7 +1249,7 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
     final theme = Theme.of(context);
 
     return AlertDialog(
-      title: const Text('扫描局域网'),
+      title: const Text('自扫描'),
       content: SizedBox(
         width: 320,
         child: _buildContent(theme),
@@ -1284,7 +1284,7 @@ class _DiscoveryDialogState extends State<_DiscoveryDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2.5),
                 ),
                 SizedBox(width: 12),
-                Text('正在扫描局域网...'),
+                Text('正在自扫描...'),
               ],
             ),
           ),
