@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:saf/saf.dart';
 import 'package:video_player/video_player.dart';
@@ -43,6 +44,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   ChewieController? _chewieController;
   String? _error;
   bool _initializing = true;
+  Orientation? _lastOrientation;
 
   @override
   void initState() {
@@ -63,7 +65,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         autoPlay: true,
         looping: false,
         allowMuting: true,
-        allowPlaybackSpeedChanging: false,
+        allowPlaybackSpeedChanging: true,
+        playbackSpeeds: const [1.0, 2.0, 3.0, 5.0],
         placeholder: const Center(child: CircularProgressIndicator()),
         errorBuilder: (context, errorMessage) => _buildErrorView(
           '播放出错',
@@ -115,8 +118,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     return path;
   }
 
+  /// 是否为移动端平台（Android / iOS），仅在移动端启用横屏沉浸全屏。
+  static bool _isMobilePlatform() {
+    if (kIsWeb) return false;
+    return Platform.isAndroid || Platform.isIOS;
+  }
+
   @override
   void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _chewieController?.dispose();
     _videoController?.dispose();
     super.dispose();
@@ -124,12 +134,78 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final orientation = MediaQuery.of(context).orientation;
+    final isLandscape =
+        _isMobilePlatform() && orientation == Orientation.landscape;
+
+    // 方向变化时调整系统 UI（仅当方向值变化，避免重复调用）
+    if (orientation != _lastOrientation) {
+      _lastOrientation = orientation;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (isLandscape) {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        } else {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        }
+      });
+    }
+
+    if (isLandscape) {
+      // 横屏沉浸式全屏：无 AppBar、无状态栏/导航栏，顶部悬浮标题
+      return Scaffold(
+        body: Stack(
+          children: [
+            _buildBody(),
+            _buildImmersiveHeader(),
+          ],
+        ),
+      );
+    }
+
+    // 竖屏标准页面
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: Center(child: _buildBody()),
+    );
+  }
+
+  /// 横屏沉浸时顶部悬浮标题层：渐变背景 + 返回按钮 + 视频标题。
+  Widget _buildImmersiveHeader() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: 56,
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 48), // 右侧留白，视觉平衡
+            ],
+          ),
+        ),
+      ),
     );
   }
 
