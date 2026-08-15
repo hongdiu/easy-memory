@@ -310,9 +310,7 @@ class WebServerService {
       return shelf.Response(400, body: '缺少 path 参数');
     }
     // Reject relative paths & traversal attempts
-    if (!Path.isAbsolute(path) ||
-        path.contains('../') ||
-        path.contains('..\\')) {
+    if (!_isAbsolutePath(path) || path.contains('../') || path.contains('..\\')) {
       return shelf.Response(400, body: '非法路径');
     }
     final file = File(path);
@@ -393,6 +391,17 @@ class WebServerService {
     if (lower.endsWith('.mov')) return 'video/quicktime';
     if (lower.endsWith('.webm')) return 'video/webm';
     return 'application/octet-stream';
+  }
+
+  /// Whether [path] is an absolute filesystem path on the current platform.
+  /// Rejects relative paths (traversal defense for the file-stream endpoint).
+  static bool _isAbsolutePath(String path) {
+    if (Platform.isWindows) {
+      // Drive letter (C:\) or UNC share (\\server\share)
+      return RegExp(r'^[A-Za-z]:[\\/]').hasMatch(path) ||
+          path.startsWith('\\\\');
+    }
+    return path.startsWith('/');
   }
 
   /// POST /api/delete — delete a file by path (filesystem path or SAF URI)

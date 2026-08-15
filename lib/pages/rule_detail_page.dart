@@ -285,6 +285,8 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
 
   Future<void> _confirmLocalDelete(BuildContext context, FileRecord record) async {
     final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('删除文件'),
         content: Text('确定删除此文件？\n\n${record.fullPath}'),
         actions: [

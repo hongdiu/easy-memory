@@ -67,7 +67,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         placeholder: const Center(child: CircularProgressIndicator()),
         errorBuilder: (context, errorMessage) => _buildErrorView(
           '播放出错',
-          errorMessage.isEmpty ? controller.errorDescription ?? '未知错误' : errorMessage,
+          errorMessage.isEmpty
+              ? (controller.value.errorDescription ?? '未知错误')
+              : errorMessage,
         ),
       );
       setState(() {
