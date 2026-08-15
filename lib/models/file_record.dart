@@ -28,6 +28,18 @@ class FileRecord {
     return '${mb.toStringAsFixed(2)} MB';
   }
 
+  /// Video extensions supported by ExoPlayer (Android) natively.
+  /// `.avi` is intentionally excluded (incomplete container support).
+  static const List<String> _videoExtensions = ['mp4', 'mkv', 'mov', 'webm'];
+
+  /// Whether this file is a video that the app can preview.
+  bool get isVideo {
+    final dot = fileName.lastIndexOf('.');
+    if (dot < 0 || dot == fileName.length - 1) return false;
+    final ext = fileName.substring(dot + 1).toLowerCase();
+    return _videoExtensions.contains(ext);
+  }
+
   factory FileRecord.fromMap(Map<String, dynamic> map) {
     return FileRecord(
       id: map['id'] as int?,

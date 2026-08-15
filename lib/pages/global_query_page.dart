@@ -14,6 +14,7 @@ import 'package:easy_memory/services/remote_delete_service.dart';
 import 'package:easy_memory/services/local_delete_service.dart';
 import 'package:easy_memory/services/data_change_notifier.dart';
 import 'package:easy_memory/pages/file_record_detail_page.dart';
+import 'package:easy_memory/pages/video_player_page.dart';
 
 class GlobalQueryPage extends StatefulWidget {
   const GlobalQueryPage({super.key});
@@ -271,6 +272,26 @@ class _SearchResultCardState extends State<_SearchResultCard> {
   final LocalDeleteService _localDeleteService = LocalDeleteService();
   bool _expanded = false;
 
+  /// 文件项点击：视频 → 播放；否则 → 详情页。
+  Future<void> _onFileTap(BuildContext context, FileRecord file) async {
+    final handled = await launchVideoPlayer(
+      context,
+      file,
+      isLocalPath: _isLocalPath,
+    );
+    if (handled) return;
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FileRecordDetailPage(
+          record: file,
+          matchValue: widget.result.matchItem.matchValue,
+          ruleName: widget.result.ruleName,
+        ),
+      ),
+    );
+  }
+
   /// Whether [path] belongs to the current device (local) vs. a remote device.
   static bool _isLocalPath(String path) {
     if (kIsWeb) return false;
@@ -369,17 +390,7 @@ class _SearchResultCardState extends State<_SearchResultCard> {
         itemBuilder: (context, index) {
           final file = files[index];
           return InkWell(
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => FileRecordDetailPage(
-                    record: file,
-                    matchValue: widget.result.matchItem.matchValue,
-                    ruleName: widget.result.ruleName,
-                  ),
-                ),
-              );
-            },
+            onTap: () => _onFileTap(context, file),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(

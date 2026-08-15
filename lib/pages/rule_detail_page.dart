@@ -18,6 +18,7 @@ import 'package:easy_memory/services/local_delete_service.dart';
 import 'package:easy_memory/services/remote_delete_service.dart';
 import 'package:easy_memory/models/remote_endpoint.dart';
 import 'package:easy_memory/pages/file_record_detail_page.dart';
+import 'package:easy_memory/pages/video_player_page.dart';
 
 class RuleDetailPage extends StatefulWidget {
   final Rule rule;
@@ -262,10 +263,28 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
     }
   }
 
+  /// 文件项点击：视频 → 播放；否则 → 详情页。
+  Future<void> _onFileTap(BuildContext context, FileRecord record, MatchItem item) async {
+    final handled = await launchVideoPlayer(
+      context,
+      record,
+      isLocalPath: _isLocalPath,
+    );
+    if (handled) return;
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FileRecordDetailPage(
+          record: record,
+          matchValue: item.matchValue,
+          ruleName: _rule.name,
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmLocalDelete(BuildContext context, FileRecord record) async {
     final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
         title: const Text('删除文件'),
         content: Text('确定删除此文件？\n\n${record.fullPath}'),
         actions: [
@@ -454,17 +473,7 @@ class _RuleDetailPageState extends State<RuleDetailPage> {
               style: const TextStyle(fontSize: 11, color: Colors.grey),
               overflow: TextOverflow.ellipsis,
             ),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => FileRecordDetailPage(
-                    record: record,
-                    matchValue: item.matchValue,
-                    ruleName: _rule.name,
-                  ),
-                ),
-              );
-            },
+            onTap: () => _onFileTap(context, record, item),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

@@ -77,6 +77,7 @@ class WebServerService {
     router.get('/api/rules', _handleRules);
     router.get('/api/sync/data', _handleSyncData);
     router.get('/api/sync/records', _handleSyncRecords);
+    router.get('/api/file', _handleFile);
     router.post('/api/delete', _handleDelete);
 
     final handler = shelf.Pipeline()
@@ -296,6 +297,102 @@ class WebServerService {
       }),
       headers: {'content-type': 'application/json; charset=utf-8'},
     );
+  }
+
+  /// GET /api/file?path=... — stream file content for video preview.
+  ///
+  /// Supports HTTP Range requests so players can seek (206 Partial Content).
+  /// Security: rejects relative paths / path traversal; the endpoint is
+  /// protected by [_authMiddleware] like all other /api/* routes.
+  Future<shelf.Response> _handleFile(shelf.Request request) async {
+    final path = request.url.queryParameters['path'] ?? '';
+    if (path.isEmpty) {
+      return shelf.Response(400, body: '缺少 path 参数');
+    }
+    // Reject relative paths & traversal attempts
+    if (!Path.isAbsolute(path) ||
+        path.contains('../') ||
+        path.contains('..\\')) {
+      return shelf.Response(400, body: '非法路径');
+    }
+    final file = File(path);
+    if (!await file.exists()) {
+      return shelf.Response(404, body: '文件不存在');
+    }
+    if ((await file.stat()).type != FileSystemEntityType.file) {
+      return shelf.Response(400, body: '不是文件');
+    }
+    final size = await file.length();
+
+    final rangeHeader = request.headers['range'];
+    if (rangeHeader == null) {
+      // No Range → 200 with full stream
+      return shelf.Response(
+        200,
+        body: file.openRead(),
+        headers: {
+          'content-type': _mimeForFile(path),
+          'content-length': '$size',
+          'accept-ranges': 'bytes',
+        },
+      );
+    }
+
+    // Parse "bytes=start-end" / "bytes=-N" (suffix) / "bytes=N-"
+    final m = RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(rangeHeader.trim());
+    if (m == null) {
+      return shelf.Response(416, body: '无效的 Range 头');
+    }
+    final startStr = m.group(1) ?? '';
+    final endStr = m.group(2) ?? '';
+
+    int start;
+    int end;
+    if (startStr.isEmpty) {
+      // Suffix range: last N bytes
+      final suffixLen = int.tryParse(endStr) ?? 0;
+      if (suffixLen <= 0) {
+        return shelf.Response(416, headers: {
+          'content-range': 'bytes */$size',
+        }, body: '无效的 Range 头');
+      }
+      start = size - suffixLen;
+      if (start < 0) start = 0;
+      end = size - 1;
+    } else {
+      start = int.tryParse(startStr) ?? -1;
+      if (start < 0 || start >= size) {
+        return shelf.Response(416, headers: {
+          'content-range': 'bytes */$size',
+        }, body: '范围超出文件大小');
+      }
+      end = endStr.isEmpty ? size - 1 : (int.tryParse(endStr) ?? start - 1);
+      if (end < start) end = start;
+      if (end >= size) end = size - 1;
+    }
+
+    final length = end - start + 1;
+    // openRead(start, end) reads [start, end) — pass end+1 to include `end`.
+    return shelf.Response(
+      206,
+      body: file.openRead(start, end + 1),
+      headers: {
+        'content-type': _mimeForFile(path),
+        'content-length': '$length',
+        'content-range': 'bytes $start-$end/$size',
+        'accept-ranges': 'bytes',
+      },
+    );
+  }
+
+  /// Map a file extension to its MIME type for the video preview endpoint.
+  static String _mimeForFile(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.mkv')) return 'video/x-matroska';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.webm')) return 'video/webm';
+    return 'application/octet-stream';
   }
 
   /// POST /api/delete — delete a file by path (filesystem path or SAF URI)

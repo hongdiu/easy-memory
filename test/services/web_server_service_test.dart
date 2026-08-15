@@ -299,6 +299,100 @@ directory TEXT NOT NULL,
         client.close();
       }
     });
+
+    test('GET /api/file streams whole file without Range header', () async {
+      final content = 'hello world video bytes';
+      final tmpFile = File('${Directory.systemTemp.path}/em_file_'
+          '${DateTime.now().millisecondsSinceEpoch}.mp4');
+      await tmpFile.writeAsString(content);
+      await server.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(Uri.parse(
+            'http://127.0.0.1:${server.port}/api/file'
+            '?path=${Uri.encodeQueryComponent(tmpFile.path)}'));
+        final response = await request.close();
+        expect(response.statusCode, 200);
+        expect(response.headers.value('content-type'), 'video/mp4');
+        expect(response.headers.value('accept-ranges'), 'bytes');
+        final body = await response.transform(utf8.decoder).join();
+        expect(body, content);
+      } finally {
+        client.close();
+        if (await tmpFile.exists()) await tmpFile.delete();
+      }
+    });
+
+    test('GET /api/file returns 206 with correct content range', () async {
+      final content = '0123456789abcdefghij';
+      final tmpFile = File('${Directory.systemTemp.path}/em_range_'
+          '${DateTime.now().millisecondsSinceEpoch}.mp4');
+      await tmpFile.writeAsString(content);
+      await server.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(Uri.parse(
+            'http://127.0.0.1:${server.port}/api/file'
+            '?path=${Uri.encodeQueryComponent(tmpFile.path)}'));
+        request.headers.set('range', 'bytes=5-9');
+        final response = await request.close();
+        expect(response.statusCode, 206);
+        expect(response.headers.value('content-range'), 'bytes 5-9/${content.length}');
+        expect(response.headers.value('content-length'), '5');
+        final body = await response.transform(utf8.decoder).join();
+        expect(body, '56789');
+      } finally {
+        client.close();
+        if (await tmpFile.exists()) await tmpFile.delete();
+      }
+    });
+
+    test('GET /api/file returns 416 for out-of-range', () async {
+      final tmpFile = File('${Directory.systemTemp.path}/em_416_'
+          '${DateTime.now().millisecondsSinceEpoch}.mp4');
+      await tmpFile.writeAsString('abcdef');
+      await server.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(Uri.parse(
+            'http://127.0.0.1:${server.port}/api/file'
+            '?path=${Uri.encodeQueryComponent(tmpFile.path)}'));
+        request.headers.set('range', 'bytes=100-200');
+        final response = await request.close();
+        expect(response.statusCode, 416);
+      } finally {
+        client.close();
+        if (await tmpFile.exists()) await tmpFile.delete();
+      }
+    });
+
+    test('GET /api/file rejects relative path (traversal)', () async {
+      await server.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(Uri.parse(
+            'http://127.0.0.1:${server.port}/api/file'
+            '?path=${Uri.encodeQueryComponent('../secret.mp4')}'));
+        final response = await request.close();
+        expect(response.statusCode, 400);
+      } finally {
+        client.close();
+      }
+    });
+
+    test('GET /api/file returns 404 for missing file', () async {
+      await server.start(port: 0);
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(Uri.parse(
+            'http://127.0.0.1:${server.port}/api/file'
+            '?path=${Uri.encodeQueryComponent('/nonexistent/missing.mp4')}'));
+        final response = await request.close();
+        expect(response.statusCode, 404);
+      } finally {
+        client.close();
+      }
+    });
   });
 
   group('WebServerService auth', () {

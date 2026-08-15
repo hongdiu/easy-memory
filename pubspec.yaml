@@ -46,6 +46,8 @@ dependencies:
   permission_handler: ^11.3.1
   sqlite3_flutter_libs: ^0.5.0
   saf: ^2.1.0
+  video_player: ^2.14.0
+  chewie: ^1.15.0
 
 dev_dependencies:
   flutter_test:
