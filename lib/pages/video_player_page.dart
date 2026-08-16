@@ -187,7 +187,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       return Scaffold(
         body: Stack(
           children: [
-            _buildBody(),
+            _buildBody(isLandscape: true),
             _buildImmersiveHeader(),
           ],
         ),
@@ -252,7 +252,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody({bool isLandscape = false}) {
     if (_initializing) {
       return const CircularProgressIndicator();
     }
@@ -272,9 +272,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         ),
         if (_longPressing)
           Padding(
-            padding: const EdgeInsets.only(top: 16, right: 16),
+            padding: EdgeInsets.only(
+              right: 16,
+            ),
             child: Align(
-              alignment: Alignment.topRight,
+              alignment: isLandscape ? Alignment.centerRight : Alignment.topRight,
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
