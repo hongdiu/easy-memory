@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:saf/saf.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 
@@ -40,16 +41,46 @@ class VideoPlayerPage extends StatefulWidget {
 }
 
 class _VideoPlayerPageState extends State<VideoPlayerPage> {
+  /// 长按倍速档位（SharedPreferences key: `long_press_speed`）
+  static const String _speedPrefsKey = 'long_press_speed';
+  static const List<double> _speedOptions = [1.5, 2.0, 3.0, 4.0, 5.0];
+
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   String? _error;
   bool _initializing = true;
   Orientation? _lastOrientation;
+  double _longPressSpeed = 3.0;
+  bool _longPressing = false;
 
   @override
   void initState() {
     super.initState();
+    _loadLongPressSpeed();
     _init();
+  }
+
+  /// 读取用户配置的长按倍速（默认 3.0）。
+  Future<void> _loadLongPressSpeed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getDouble(_speedPrefsKey);
+    if (saved != null && mounted) {
+      setState(() => _longPressSpeed = saved);
+    }
+  }
+
+  /// 长按开始：切到配置的倍速。
+  void _onLongPressStart(LongPressStartDetails details) {
+    _videoController?.setPlaybackSpeed(_longPressSpeed);
+    setState(() => _longPressing = true);
+  }
+
+  /// 松开 / 手势取消：恢复常速 1x。
+  void _restoreNormalSpeed() {
+    _videoController?.setPlaybackSpeed(1.0);
+    if (_longPressing && mounted) {
+      setState(() => _longPressing = false);
+    }
   }
 
   Future<void> _init() async {
@@ -168,6 +199,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       appBar: AppBar(
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         backgroundColor: Theme.of(context).colorScheme.primary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.speed),
+            tooltip: '长按倍速设置',
+            onPressed: _showSpeedSettings,
+          ),
+        ],
       ),
       body: Center(child: _buildBody()),
     );
@@ -201,7 +239,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 48), // 右侧留白，视觉平衡
+              IconButton(
+                icon: const Icon(Icons.speed, color: Colors.white),
+                tooltip: '长按倍速设置',
+                onPressed: _showSpeedSettings,
+              ),
+              const SizedBox(width: 8),
             ],
           ),
         ),
@@ -216,7 +259,80 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     if (_error != null) {
       return _buildErrorView('无法播放此视频', _error!);
     }
-    return Chewie(controller: _chewieController!);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPressStart: _onLongPressStart,
+            onLongPressEnd: (_) => _restoreNormalSpeed(),
+            onLongPressCancel: _restoreNormalSpeed,
+            child: Chewie(controller: _chewieController!),
+          ),
+        ),
+        if (_longPressing)
+          Padding(
+            padding: const EdgeInsets.only(top: 16, right: 16),
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${_formatSpeed(_longPressSpeed)}x',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 倍速显示格式：整数去小数点（3 → `3`），小数保留一位（1.5 → `1.5`）。
+  static String _formatSpeed(double speed) {
+    return speed == speed.roundToDouble()
+        ? speed.toStringAsFixed(0)
+        : speed.toStringAsFixed(1);
+  }
+
+  /// 长按倍速配置层：选择后写入 SharedPreferences，下次长按生效。
+  Future<void> _showSpeedSettings() async {
+    final selected = await showModalBottomSheet<double>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Text('长按倍速', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            const Divider(height: 1),
+            ..._speedOptions.map((speed) => ListTile(
+                  title: Text('${_formatSpeed(speed)}x'),
+                  trailing: speed == _longPressSpeed
+                      ? const Icon(Icons.check)
+                      : null,
+                  onTap: () => Navigator.of(ctx).pop(speed),
+                )),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_speedPrefsKey, selected);
+    if (!mounted) return;
+    setState(() => _longPressSpeed = selected);
   }
 
   Widget _buildErrorView(String title, String message) {
