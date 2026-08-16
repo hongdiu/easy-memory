@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../lib/pages/video_player_page.dart';
+import 'package:easy_memory/pages/video_player_page.dart';
 
 void main() {
   setUp(() {
